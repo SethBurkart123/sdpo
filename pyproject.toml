@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sdpo-trainer"
+version = "0.1.0"
+description = "Self-Distilled Policy Optimization (SDPO) for TRL — faithful reimplementation of arxiv:2601.20802"
+license = {text = "Apache-2.0"}
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "SDPO Community"}]
+
+dependencies = [
+    "torch>=2.0.0",
+    "transformers>=4.50.0",
+    "trl>=0.17.0",
+    "accelerate>=1.0.0",
+]
+
+[project.optional-dependencies]
+unsloth = ["unsloth"]
+test = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "ruff"]
+
+[project.urls]
+Homepage = "https://github.com/sdpo-community/sdpo-trainer"
+Paper = "https://arxiv.org/abs/2601.20802"
+Reference = "https://github.com/lasgroup/SDPO"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
