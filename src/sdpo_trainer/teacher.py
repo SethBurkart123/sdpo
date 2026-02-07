@@ -25,6 +25,12 @@ def ema_update(teacher: nn.Module, student: nn.Module, rate: float) -> None:
 
     Matches verl's DataParallelPPOActor._update_teacher exactly.
 
+    For quantized models (e.g. 4-bit via bitsandbytes + Unsloth), some base
+    parameters are stored as uint8 and cannot participate in float arithmetic.
+    These are skipped — only floating-point parameters (the LoRA adapters)
+    are EMA-updated, which is the correct behavior since the quantized base
+    weights are frozen anyway.
+
     Args:
         teacher: The teacher model whose parameters are updated in-place.
         student: The student model providing the target parameters.
@@ -32,7 +38,9 @@ def ema_update(teacher: nn.Module, student: nn.Module, rate: float) -> None:
     """
     with torch.no_grad():
         for teacher_param, student_param in zip(teacher.parameters(), student.parameters()):
-            student_data = student_param.data.to(device=teacher_param.device)
+            if not teacher_param.data.is_floating_point():
+                continue
+            student_data = student_param.data.to(device=teacher_param.device, dtype=teacher_param.dtype)
             teacher_param.data.mul_(1.0 - rate).add_(student_data, alpha=rate)
 
 

@@ -152,19 +152,23 @@ def build_teacher_prompts(
 def compute_self_distillation_mask(
     solutions: list[str | None],
     feedback_list: list[str | None],
+    feedback_only_without_solution: bool = False,
 ) -> list[float]:
     """
     Compute the self-distillation mask indicating which samples have teacher signal.
 
     A sample has teacher signal (mask=1.0) if it has either:
     - A successful peer demonstration (solution is not None), OR
-    - Non-empty environment feedback.
+    - Feedback that is actually used (accounting for feedback_only_without_solution).
 
-    Matches verl's self_distillation_mask construction.
+    Matches verl's self_distillation_mask construction:
+        feedback_used[i] = has_feedback and (not feedback_only_without_solution or not has_solution)
+        mask[i] = has_solution or feedback_used[i]
 
     Args:
         solutions: Demonstration string per sample, or None.
         feedback_list: Feedback string per sample, or None.
+        feedback_only_without_solution: If True, feedback only counts when no solution exists.
 
     Returns:
         List of 1.0/0.0 values, one per sample.
@@ -175,5 +179,6 @@ def compute_self_distillation_mask(
         has_feedback = (
             feedback_list[i] is not None and isinstance(feedback_list[i], str) and feedback_list[i].strip() != ""
         )
-        mask.append(1.0 if (has_solution or has_feedback) else 0.0)
+        feedback_used = has_feedback and (not feedback_only_without_solution or not has_solution)
+        mask.append(1.0 if (has_solution or feedback_used) else 0.0)
     return mask

@@ -28,10 +28,9 @@ We did deep-dive research into:
    the `trl` module namespace, and what that means for subclass method resolution.
 4. **9 critical gotchas** that would have broken the implementation (see below).
 
-### Implementation (Phases 1-4 complete)
+### Implementation (complete)
 
-All code uses **test-driven development** — tests were written first, then
-implementations made them pass. **69 tests, all passing.**
+All code uses **test-driven development**. **115 tests across 7 test files, all passing.**
 
 | Module | What It Does | Tests |
 |--------|-------------|-------|
@@ -39,14 +38,24 @@ implementations made them pass. **69 tests, all passing.**
 | `reprompting.py` | Teacher prompt construction, demo selection, thinking tag removal, SD mask | 19 |
 | `teacher.py` | EMA update formula, callback with TRL timing | 7 |
 | `config.py` | `SDPOConfig` dataclass with paper experiment defaults | 16 |
+| `trainer.py` | `SDPOTrainer(GRPOTrainer)` — full integration layer | 10 |
 | `utils.py` | Unsloth import order detection | 0 (runtime utility) |
+| *reference match* | Verify outputs match verl reference code | 34 |
+| *unsloth integration* | End-to-end with Unsloth + 4-bit LoRA | 2 |
 
 Run tests: `uv run pytest`
 
-### What Has NOT Been Done
+### Deep verification against reference
 
-**Phase 5: `SDPOTrainer(GRPOTrainer)` — the integration layer.** This is the main
-remaining work. See `TODO.md` for the full breakdown.
+The reference repository (lasgroup/SDPO) was cloned and every core function was
+compared line-by-line against our implementation. 6 bugs were found and fixed:
+
+1. **Rewards vs advantages** for demo selection — now uses raw rewards
+2. **EMA timing** — moved from `compute_loss` to `on_step_end` callback
+3. **Feedback capture** — now reads from reward function's `last_feedback` attribute
+4. **Teacher tokenization** — now uses `apply_chat_template` with chat formatting
+5. **Self-distillation mask** — accounts for `feedback_only_without_solution` flag
+6. **EMA with quantized models** — skips non-floating-point params (Unsloth/4-bit)
 
 ---
 
@@ -214,62 +223,22 @@ but PatchFastRL wasn't called before importing sdpo_trainer.
 
 ---
 
-## How to Continue: Building SDPOTrainer
-
-### The approach
+## How SDPOTrainer Works
 
 `SDPOTrainer` subclasses TRL's `GRPOTrainer`. It overrides two methods:
 
-1. **`_generate_and_score_completions(inputs)`**:
-   - Call `super()` to get all GRPO outputs (generation + scoring + advantages)
-   - Decode completions and prompts
-   - For each sample, call `select_demonstration()` and collect feedback
-   - Call `build_teacher_prompts()` to create reprompted text
-   - Tokenize via `apply_chat_template` (with truncation at `max_reprompt_length`)
-   - Concatenate `[teacher_prompt_tokens | response_tokens]` into `teacher_input_ids`
-   - Compute `teacher_position_ids` from `teacher_attention_mask`
-   - Store in output dict: `teacher_input_ids`, `teacher_attention_mask`,
-     `teacher_position_ids`, `self_distillation_mask`
+1. **`_generate_and_score_completions(inputs)`** — calls `super()`, then adds
+   teacher prompt construction, demo selection, tokenization via `apply_chat_template`,
+   and self-distillation mask computation.
 
-2. **`compute_loss(model, inputs, ...)`**:
-   - Do NOT call `super()` — SDPO replaces GRPO loss entirely
-   - Student forward pass: run model on original `input_ids`, extract top-K logits
-     from the completion positions, compute per-token log probs
-   - Teacher forward pass: with `torch.no_grad()`, run teacher model (self.ref_model)
-     on `teacher_input_ids`, gather teacher logits at student's top-K indices
-   - Call `compute_self_distillation_loss()` from distillation.py
-   - Return scalar loss
+2. **`compute_loss(model, inputs, ...)`** — does NOT call `super()`. Runs student
+   and teacher forward passes, extracts top-K logits, and computes the distillation loss.
 
-### UID grouping problem
+UID grouping uses TRL's `RepeatSampler` structure: indices `[i*G : (i+1)*G]` share
+a prompt, which matches how TRL groups rollouts for advantage computation.
 
-verl has explicit `uid` fields in its data. TRL does not. Options:
-- Use the prompt text itself as the UID (hash it)
-- Use the dataset index (TRL's `RepeatSampler` repeats prompts `num_generations` times
-  in consecutive positions, so indices `[i*G .. (i+1)*G-1]` share a prompt)
-- Add a `uid_column` config option
-
-The consecutive-index approach is simplest and matches how TRL already groups rollouts
-for advantage computation.
-
-### logits_to_keep alignment
-
-Student and teacher have different prompt lengths (teacher prompt is longer due to
-reprompting). But they share the SAME response tokens. The `logits_to_keep` parameter
-controls how many positions from the end of the sequence to return logits for.
-
-For both student and teacher, `logits_to_keep = completion_length`. The teacher's
-extra prompt tokens only affect the attention context, not the positions we extract
-logits from. This alignment is natural — just use the same `completion_length` for both.
-
-### Testing approach
-
-Phase 5 integration tests need a model. Options:
-- Use a tiny model on CPU (e.g., `sshleifer/tiny-gpt2` or create a random
-  `GPT2LMHeadModel` with 2 layers). This is fast but won't test chat templates.
-- Use `Qwen/Qwen2.5-0.5B-Instruct` on GPU. Realistic but requires GPU hardware.
-- Mock the model's forward pass entirely. Fast and deterministic but tests less.
-
-Recommend: tiny random model on CPU for CI, real model on GPU for validation.
+`logits_to_keep` is set to `completion_length` for both student and teacher — the
+teacher's extra prompt tokens only affect attention context, not extracted positions.
 
 ---
 
@@ -281,7 +250,7 @@ Recommend: tiny random model on CPU for CI, real model on GPU for validation.
 - Add dependency: `uv add <package>`
 - Build backend: `hatchling`
 - Package source layout: `src/sdpo_trainer/`
-- Platform: macOS (darwin), no GPU locally
+- Platform: Linux, tested on NVIDIA RTX 3080 (10GB)
 
 ---
 

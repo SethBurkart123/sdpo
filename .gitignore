@@ -12,3 +12,4 @@ build/
 uv.lock
 
 test_output/
+SDPO_reference/

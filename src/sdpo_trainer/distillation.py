@@ -80,8 +80,11 @@ def top_k_kl_divergence(
         student_lp = add_tail_bucket(student_topk_log_probs)
         teacher_lp = add_tail_bucket(teacher_topk_log_probs)
     else:
-        student_lp = student_topk_log_probs
-        teacher_lp = teacher_topk_log_probs
+        # When not adding a tail bucket, verl renormalizes the top-K log-probs
+        # so they form a valid probability distribution (sum to 1).
+        # renorm_topk_log_probs: logp - logsumexp(logp)
+        student_lp = student_topk_log_probs - torch.logsumexp(student_topk_log_probs, dim=-1, keepdim=True)
+        teacher_lp = teacher_topk_log_probs - torch.logsumexp(teacher_topk_log_probs, dim=-1, keepdim=True)
 
     if alpha == 0.0:
         # Forward KL: KL(teacher || student) = sum(teacher.exp() * (teacher - student))
