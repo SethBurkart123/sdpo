@@ -20,9 +20,11 @@ from sdpo_trainer.reprompting import (
     select_demonstration,
 )
 from sdpo_trainer.teacher import EMATeacherCallback, ema_update
+from sdpo_trainer.trainer import SDPOTrainer
 
 __all__ = [
     "SDPOConfig",
+    "SDPOTrainer",
     "add_tail_bucket",
     "aggregate_loss",
     "apply_importance_sampling_correction",

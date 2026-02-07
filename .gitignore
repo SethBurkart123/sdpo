@@ -10,3 +10,5 @@ build/
 .venv/
 *.so
 uv.lock
+
+test_output/

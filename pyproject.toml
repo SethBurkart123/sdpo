@@ -12,6 +12,9 @@ dependencies = [
     "transformers>=4.50.0",
     "trl>=0.17.0",
     "accelerate>=1.0.0",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "datasets>=4.3.0",
 ]
 
 [project.optional-dependencies]
@@ -41,3 +44,6 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+markers = [
+    "gpu: tests that require CUDA GPU (deselect with '-m \"not gpu\"')",
+]
