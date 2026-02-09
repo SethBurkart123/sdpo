@@ -127,6 +127,14 @@ class SDPOTrainer(GRPOTrainer):
         # Stash for raw per-sample rewards (before advantage normalization)
         self._last_raw_rewards: torch.Tensor | None = None
 
+    def _calculate_rewards(self, inputs, prompts, completions, completion_ids_list):
+        """Override to capture raw rewards before advantage normalization."""
+        rewards_per_func = super()._calculate_rewards(inputs, prompts, completions, completion_ids_list)
+        # Compute weighted sum — same formula TRL uses in _generate_and_score_completions
+        device = rewards_per_func.device
+        self._last_raw_rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
+        return rewards_per_func
+
     def _generate_and_score_completions(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """
         Generate completions and prepare teacher prompt data.
@@ -148,23 +156,12 @@ class SDPOTrainer(GRPOTrainer):
 
         # --- Recover per-sample rewards ---
         # In verl, _collect_solutions_by_uid uses reward_tensor.sum(dim=-1) (the
-        # actual rewards, NOT advantages). TRL's outputs contain "advantages" which
-        # are mean-centered per group. We need the raw rewards.
-        #
-        # Strategy: TRL stores per-reward-function rewards. We look for them in the
-        # outputs dict. If not available, we reconstruct from advantages by reversing
-        # the group normalization: reward_i = advantage_i + mean(rewards_in_group).
-        # But since mean cancels, the ordering within a group is preserved. So we
-        # can still use advantages for the threshold comparison if we set the threshold
-        # relative to advantages (threshold=0 means "above group mean").
-        #
-        # However, the correct approach matching verl is to use actual rewards.
-        # TRL's _generate_and_score_completions stores rewards before normalization.
-        # We capture them via _last_raw_rewards if a reward wrapper sets them.
+        # actual rewards, NOT advantages). Our _calculate_rewards override captures
+        # the raw weighted rewards before TRL normalizes them into advantages.
         rewards = self._last_raw_rewards
         if rewards is None:
-            # Fallback: use advantages. The success_threshold should be set to 0.0
-            # (meaning "above group mean") when using advantages as proxy.
+            # Fallback: use advantages if _calculate_rewards wasn't called
+            logger.warning("_last_raw_rewards is None — falling back to advantages for demo selection")
             rewards = outputs["advantages"]
 
         # --- Collect feedback ---
@@ -354,9 +351,12 @@ class SDPOTrainer(GRPOTrainer):
             is_clip=self.sdpo_config.is_clip,
         )
 
-        # Log metrics safely
-        if hasattr(self, "log"):
-            self.log(metrics)
+        # Accumulate metrics into TRL's _metrics dict so they get drained
+        # once per step by TRL's log() — NOT self.log() which would fire
+        # on_log callbacks on every micro-batch during gradient accumulation.
+        mode = "eval" if not self.model.training else "train"
+        for k, v in metrics.items():
+            self._metrics[mode][k].append(v if isinstance(v, (int, float)) else v)
 
         # NOTE: EMA update is handled by _EMAStepCallback.on_step_end,
         # NOT here. Placing it here would fire on every micro-batch during

@@ -13,3 +13,12 @@ uv.lock
 
 test_output/
 SDPO_reference/
+
+# macOS
+.DS_Store
+._*
+
+# Benchmark: large generated files (rerun scripts to regenerate)
+benchmark/results/*_adapter/
+benchmark/results/*_checkpoints/
+benchmark/results/*.log
