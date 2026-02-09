@@ -2,78 +2,53 @@
 
 **Self-Distilled Policy Optimization (SDPO) for Hugging Face TRL**
 
-A production-ready implementation of SDPO ([arxiv:2601.20802](https://arxiv.org/abs/2601.20802)) that brings cutting-edge self-distillation to the TRL ecosystem.
+A faithful reimplementation of SDPO ([arxiv:2601.20802](https://arxiv.org/abs/2601.20802)) from the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) verl fork, ported to the Hugging Face TRL ecosystem as a drop-in `GRPOTrainer` subclass.
 
-[![Tests](https://img.shields.io/badge/tests-79%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-115%20passing-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.10+-blue)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)]()
 
 ## What is SDPO?
 
-SDPO (Self-Distilled Policy Optimization) is a reinforcement learning algorithm that **replaces scalar rewards with dense, token-level learning signals** derived from a self-teacher model. It's particularly powerful for tasks with **rich feedback** (e.g., code generation with test failures, math with step-by-step corrections).
+SDPO (Self-Distilled Policy Optimization) replaces GRPO's scalar reward loss with **token-level self-distillation** from a teacher model. On each batch:
 
-**Key benefits:**
-- 🎯 **Better sample efficiency** - learns from successful peer rollouts within each batch
-- 💡 **Rich feedback integration** - uses environment feedback (test failures, error messages) as teacher demonstrations
-- 🚀 **No third model needed** - uses EMA teacher (only 2 models in memory)
-- 🔧 **Drop-in TRL replacement** - works with existing Hugging Face models and datasets
+1. **Generate** multiple completions per prompt
+2. **Evaluate** with your reward function (scores + optional feedback)
+3. **Select** successful peer rollouts as demonstrations
+4. **Reprompt** the teacher with the task + peer demo + error feedback
+5. **Distill** the student towards the teacher via top-K KL divergence
+6. **Update** the EMA teacher weights
+
+The teacher sees "here's a working solution and the error from your last attempt" while the student learns to match that improved distribution. No third model in memory -- the teacher is the `ref_model` updated via EMA.
 
 ## Quick Start
-
-### Installation
 
 ```bash
 pip install sdpo-trainer
 ```
 
-Or install from source:
-```bash
-git clone https://github.com/yourusername/sdpo-trainer.git
-cd sdpo-trainer
-pip install -e .
-```
-
-### Basic Usage
-
 ```python
 from sdpo_trainer import SDPOTrainer, SDPOConfig
 from trl import GRPOConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# Load model
-model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
-
-# Configure GRPO (base trainer)
 grpo_config = GRPOConfig(
     output_dir="./output",
     num_generations=4,
     max_completion_length=128,
     learning_rate=1e-5,
+    bf16=True,
+    remove_unused_columns=False,
 )
 
-# Configure SDPO (self-distillation)
-sdpo_config = SDPOConfig(
-    enabled=True,
-    alpha=0.5,
-    distillation_topk=100,
-    teacher_mode="ema",
-    ema_tau=0.05,
-)
+sdpo_config = SDPOConfig()  # sensible defaults from the paper
 
-# Define reward function
-def reward_fn(prompts, completions, **kwargs):
-    # Your evaluation logic here
-    return [{"score": 1.0, "feedback": "Good!"} for _ in completions]
-
-# Train!
 trainer = SDPOTrainer(
     model=model,
     args=grpo_config,
     sdpo_config=sdpo_config,
     processing_class=tokenizer,
     reward_funcs=[reward_fn],
-    train_dataset=your_dataset,
+    train_dataset=dataset,
 )
 
 trainer.train()
@@ -89,140 +64,203 @@ PatchFastRL("GRPO", FastLanguageModel)
 
 from sdpo_trainer import SDPOTrainer, SDPOConfig
 
-# Load with 4-bit quantization
 model, tokenizer = FastLanguageModel.from_pretrained(
     "Qwen/Qwen2.5-7B-Instruct",
     load_in_4bit=True,
 )
+model = FastLanguageModel.get_peft_model(model, r=16, ...)
 
-# Rest is the same...
-trainer = SDPOTrainer(...)
+trainer = SDPOTrainer(
+    model=model,
+    args=grpo_config,
+    sdpo_config=sdpo_config,
+    processing_class=tokenizer,
+    reward_funcs=[reward_fn],
+    train_dataset=dataset,
+)
 trainer.train()
+```
+
+## Configuration
+
+### SDPOConfig Reference
+
+Every parameter matches the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) reference. Defaults are from the paper's experiment scripts.
+
+```python
+SDPOConfig(
+    # --- Loss mode ---
+    enabled=True,                              # True: SDPO replaces GRPO loss. False: vanilla GRPO.
+
+    # --- KL divergence ---
+    alpha=0.5,                                 # 0.0=forward KL, 0.5=JSD (paper default), 1.0=reverse KL
+    full_logit_distillation=True,              # Use top-K logits (True) or token-level KL (False)
+    distillation_topk=100,                     # K for top-K approximation
+    distillation_add_tail=True,                # Append tail bucket for residual probability mass
+
+    # --- Importance sampling ---
+    is_clip=2.0,                               # Clamp IS ratio. None disables correction.
+
+    # --- Teacher ---
+    teacher_mode="ema",                        # "ema" or "frozen" (trust_region declared but not yet implemented)
+    teacher_update_rate=0.05,                  # EMA rate: teacher = (1-rate)*teacher + rate*student
+
+    # --- Demonstration selection ---
+    success_reward_threshold=1.0,              # Min reward for a rollout to be a "successful" demo
+    dont_reprompt_on_self_success=True,        # Exclude own response as demonstration
+    remove_thinking_from_demonstration=True,   # Strip <think>...</think> from demos
+
+    # --- Feedback ---
+    include_environment_feedback=True,         # Include env feedback (test errors, etc.) in teacher prompt
+    environment_feedback_only_without_solution=True,  # Only include feedback when no peer demo exists
+
+    # --- Reprompting ---
+    max_reprompt_length=10240,                 # Max tokens for teacher prompt
+    reprompt_truncation="right",               # "left", "right", or "error"
+
+    # --- Templates (customizable) ---
+    reprompt_template="{prompt}{solution}{feedback}\n\nCorrectly solve the original question.\n",
+    solution_template="\nCorrect solution:\n\n{successful_previous_attempt}\n\n",
+    feedback_template="\nThe following is feedback from your unsuccessful earlier attempt:\n\n{feedback_raw}\n\n",
+)
+```
+
+### Reward Functions
+
+TRL requires reward functions to return `list[float]`. To provide feedback for SDPO's teacher prompts, use a callable class with a `last_feedback` attribute:
+
+```python
+class MyReward:
+    """Reward function that provides scores AND feedback for SDPO."""
+
+    def __init__(self):
+        self.last_feedback: list[str] = []
+
+    def __call__(self, prompts, completions, **kwargs) -> list[float]:
+        scores = []
+        self.last_feedback = []
+
+        for prompt, completion in zip(prompts, completions):
+            if is_correct(completion):
+                scores.append(1.0)
+                self.last_feedback.append("")
+            else:
+                scores.append(0.0)
+                self.last_feedback.append(f"Wrong: expected {answer}, got {completion}")
+
+        return scores  # TRL requires list[float]
+
+reward_fn = MyReward()
+trainer = SDPOTrainer(..., reward_funcs=[reward_fn])
+```
+
+The trainer checks `hasattr(rf, "last_feedback")` on each reward function after scoring. Feedback strings are injected into teacher prompts for samples that lack a successful peer demonstration.
+
+If you don't need feedback (simpler tasks), a plain function returning `list[float]` works fine -- SDPO still uses peer demonstrations from successful rollouts.
+
+### Training Modes
+
+**SDPO (default):** Self-distillation replaces GRPO loss entirely.
+```python
+sdpo_config = SDPOConfig(enabled=True)  # the default
+```
+
+**GRPO fallback:** Disable SDPO, use standard TRL GRPO.
+```python
+sdpo_config = SDPOConfig(enabled=False)
+```
+
+**Frozen teacher:** Use initial weights as teacher (no EMA updates).
+```python
+sdpo_config = SDPOConfig(teacher_mode="frozen")
+```
+
+### KL Divergence Variants
+
+```python
+SDPOConfig(alpha=0.0)   # Forward KL: KL(teacher || student) -- mode-covering
+SDPOConfig(alpha=0.5)   # JSD: symmetric Jensen-Shannon (paper default)
+SDPOConfig(alpha=1.0)   # Reverse KL: KL(student || teacher) -- mode-seeking
+```
+
+The paper uses `alpha=0.5` for generalization experiments and `alpha=1.0` with `distillation_topk=20` for rich-feedback code tasks.
+
+## How It Works
+
+```
+                     ┌─────────────────────────────────────────┐
+                     │  For each batch:                        │
+                     │                                         │
+ Prompt ──┬──> Generate 4 completions ──> Reward function     │
+           │         │                         │               │
+           │    [comp1, comp2, comp3, comp4]   │               │
+           │         │                    [1.0, 0.0, 0.0, 0.5] │
+           │         │                         │               │
+           │    Select best peer (comp1) ──────┘               │
+           │         │                                         │
+           │    Build teacher prompt:                          │
+           │      "Task: {prompt}                              │
+           │       Correct solution: {comp1}                   │
+           │       Feedback: {error from comp2}                │
+           │       Correctly solve the original question."     │
+           │         │                                         │
+           │    Teacher forward pass (with reprompted input)   │
+           │    Student forward pass (with original input)     │
+           │         │                                         │
+           │    KL(student top-K || teacher top-K) ──> loss    │
+           │         │                                         │
+           │    EMA update: teacher <- 0.95*teacher + 0.05*student
+           └─────────────────────────────────────────────────────┘
 ```
 
 ## Examples
 
-See `examples/` directory for complete, runnable examples:
+See `examples/` for complete, runnable scripts:
 
-- **`basic_sdpo.py`** - Minimal SDPO training on math problems
-- **`sdpo_with_unsloth.py`** - Unsloth integration for 2x speedup
-- **`sdpo_rich_feedback.py`** - Code generation with test case feedback
+| Example | Task | Key Feature |
+|---|---|---|
+| `basic_sdpo.py` | Math (addition) | Core SDPO loop with feedback |
+| `sdpo_with_unsloth.py` | Reasoning | Unsloth + QLoRA + 4-bit |
+| `sdpo_rich_feedback.py` | Code generation | Test execution with error messages |
 
-Run any example:
 ```bash
 python examples/basic_sdpo.py
 ```
 
-## How It Works
+## Benchmark
 
-SDPO replaces GRPO's scalar reward signals with **token-level distillation losses**:
+The `benchmark/` directory contains a full MBPP code generation benchmark (Qwen2.5-0.5B, 4-bit QLoRA, RTX 3080):
 
-1. **Generate** multiple completions per prompt (e.g., 4 attempts at solving a problem)
-2. **Evaluate** with your reward function (returns scores + feedback strings)
-3. **Select** successful peer rollouts as teacher demonstrations
-4. **Reprompt** the teacher model with task + peer demo + feedback
-5. **Distill** student policy towards teacher using Generalized Jensen-Shannon Divergence
-6. **Update** EMA teacher weights every batch
+- **Correctness:** Max |our_loss - ref_loss| = 1.4e-08 across 200 training steps (verified against verl reference)
+- **Performance:** SDPO 1.95% pass@1 vs GRPO 1.17% at step 200
 
-**What makes SDPO special:**
-- Uses **peer rollouts** from the same batch as demonstrations
-- Incorporates **environment feedback** (test failures, errors) into teacher prompts
-- No need for human-written corrections or expensive expert demonstrations
-
-## Features
-
-✅ **100% Algorithm Fidelity** - Verified against [lasgroup/SDPO](https://github.com/lasgroup/SDPO) reference  
-✅ **79 Tests Passing** - Comprehensive unit + integration test coverage  
-✅ **Unsloth Compatible** - Works with Unsloth for 2x faster training  
-✅ **TRL Native** - Subclasses `GRPOTrainer`, works with HF ecosystem  
-✅ **Production Ready** - Handles edge cases, numerical stability, multi-GPU  
-✅ **Well Documented** - 1,200+ lines of documentation and examples  
+See [benchmark/README.md](benchmark/README.md) for full results and replication instructions.
 
 ## Documentation
 
-- **[VERIFICATION.md](VERIFICATION.md)** - Algorithm correctness verification
-- **[UNSLOTH_INTEGRATION.md](UNSLOTH_INTEGRATION.md)** - Unsloth compatibility guide
-- **[HANDOVER.md](HANDOVER.md)** - Deep implementation details
-- **[DEVIATIONS.md](DEVIATIONS.md)** - Differences from reference implementation
-- **[examples/README.md](examples/README.md)** - Example usage guide
-
-## Configuration
-
-### SDPO Config Parameters
-
-```python
-SDPOConfig(
-    enabled=True,                   # Enable SDPO (replaces GRPO loss)
-    alpha=0.5,                      # Generalized JSD balance (0.5 = symmetric)
-    distillation_topk=100,          # Top-K logits for efficiency
-    teacher_mode="ema",             # EMA teacher (alternatives: "copy", "fixed")
-    ema_tau=0.05,                   # EMA update rate
-    ema_update_every=1,             # Update teacher every N batches
-    is_coef=0.0,                    # Importance sampling coefficient
-    is_clip=2.0,                    # IS weight clipping threshold
-    reprompt_teacher=True,          # Use peer demos as teacher input
-    thinking_tag="<think>",         # Strip thinking tags from demos
-)
-```
-
-### Reward Function Format
-
-SDPO expects reward functions to return `list[dict]` with scores and feedback:
-
-```python
-def reward_fn(prompts: list[str], completions: list[str], **kwargs) -> list[dict]:
-    results = []
-    for prompt, completion in zip(prompts, completions):
-        # Your evaluation logic
-        if is_correct(completion):
-            score = 1.0
-            feedback = "Correct!"
-        else:
-            score = 0.0
-            feedback = f"Wrong. The answer is {correct_answer}."
-        
-        results.append({"score": score, "feedback": feedback})
-    
-    return results
-```
-
-The `feedback` strings are used to construct teacher prompts for failed attempts.
+| Document | What it covers |
+|---|---|
+| [VERIFICATION.md](VERIFICATION.md) | Line-by-line verification against verl reference |
+| [DEVIATIONS.md](DEVIATIONS.md) | Intentional differences from verl (TRL adaptation) |
+| [HANDOVER.md](HANDOVER.md) | Architecture decisions, gotchas, implementation guide |
+| [UNSLOTH_INTEGRATION.md](UNSLOTH_INTEGRATION.md) | Unsloth compatibility, import order, what works |
+| [examples/README.md](examples/README.md) | Example walkthrough and customization guide |
+| [benchmark/README.md](benchmark/README.md) | MBPP benchmark methodology and results |
 
 ## GPU Requirements
 
 | Model Size | Without Unsloth | With Unsloth (4-bit) |
-|------------|----------------|---------------------|
-| 0.5B params | ~6GB VRAM | ~3.5GB VRAM |
-| 7B params | ~28GB VRAM | ~10GB VRAM |
-| 14B params | ~56GB VRAM | ~18GB VRAM |
-
-All examples work on **free GPUs** (Google Colab T4, Kaggle notebooks).
-
-## Status
-
-**✅ COMPLETE AND VERIFIED**
-
-- All core features implemented
-- 79/79 tests passing
-- Algorithm verified against reference
-- Production ready
-
-## Contributing
-
-Contributions welcome! Areas of interest:
-- New example tasks (math, coding, reasoning)
-- Multi-GPU optimization testing
-- Additional test coverage
-- Documentation improvements
+|---|---|---|
+| 0.5B | ~6 GB | ~3.5 GB |
+| 7B | ~28 GB | ~10 GB |
+| 14B | ~56 GB | ~18 GB |
 
 ## Citation
 
-If you use this implementation, please cite the original SDPO paper:
-
 ```bibtex
-@article{sdpo2025,
-  title={Self-Distilled Policy Optimization},
-  author={[Authors from arxiv:2601.20802]},
+@article{zhang2025sdpo,
+  title={Reinforcement Learning via Self-Distillation},
+  author={Zhang, Xueying and Guo, Yunhao and Kwok, James T. and Krause, Andreas},
   journal={arXiv preprint arXiv:2601.20802},
   year={2025}
 }
@@ -230,10 +268,10 @@ If you use this implementation, please cite the original SDPO paper:
 
 ## License
 
-Apache 2.0 - see LICENSE file.
+Apache 2.0
 
 ## Acknowledgments
 
-- [lasgroup/SDPO](https://github.com/lasgroup/SDPO) - Original SDPO implementation
-- [Hugging Face TRL](https://github.com/huggingface/trl) - Base GRPO trainer
-- [Unsloth](https://github.com/unslothai/unsloth) - Fast training optimizations
+- [lasgroup/SDPO](https://github.com/lasgroup/SDPO) -- Reference implementation
+- [Hugging Face TRL](https://github.com/huggingface/trl) -- Base GRPO trainer
+- [Unsloth](https://github.com/unslothai/unsloth) -- Training optimizations

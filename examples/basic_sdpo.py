@@ -2,8 +2,9 @@
 """
 Basic SDPO Training Example
 
-This script demonstrates minimal SDPO training on a simple math task.
-It uses a small model (Qwen-0.5B) that can run on consumer GPUs.
+Trains a small model on simple math problems using SDPO self-distillation.
+Demonstrates the core loop: generate completions, reward, select peer demos,
+reprompt teacher, distill.
 
 Usage:
     python examples/basic_sdpo.py
@@ -12,168 +13,112 @@ Expected runtime: ~5 minutes on RTX 3080 (10GB)
 """
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import GRPOConfig
 
-from sdpo_trainer import SDPOTrainer, SDPOConfig
+from sdpo_trainer import SDPOConfig, SDPOTrainer
 
 
 def create_math_dataset(num_samples: int = 100) -> Dataset:
-    """Create a simple math problem dataset for SDPO training."""
+    """Simple addition problems."""
     problems = []
     for i in range(num_samples):
         a, b = i % 10 + 1, (i * 3) % 10 + 1
         problems.append(
             {
-                "uid": f"math_{i}",  # Unique identifier for grouping rollouts
-                "prompt": f"What is {a} + {b}? Answer with just the number.",
+                "prompt": [{"role": "user", "content": f"What is {a} + {b}? Answer with just the number."}],
                 "correct_answer": a + b,
             }
         )
     return Dataset.from_list(problems)
 
 
-def math_reward_function(prompts: list[str], completions: list[str], **kwargs) -> list[dict]:
+class MathReward:
     """
-    Reward function that provides both scores and feedback.
+    Reward function that scores math answers and provides feedback for SDPO.
 
-    Returns:
-        list[dict]: Each dict has {"score": float, "feedback": str}
-                   - score: 1.0 for correct, 0.0 for wrong
-                   - feedback: explanation string for the teacher
+    TRL requires list[float] return type. To provide feedback strings for
+    SDPO's teacher prompts, store them on self.last_feedback -- the trainer
+    checks for this attribute after each reward call.
     """
-    # Extract dataset to get correct answers
-    dataset = kwargs.get("dataset", [])
 
-    results = []
-    for prompt, completion, sample in zip(prompts, completions, dataset):
-        try:
-            # Extract the number from completion
-            answer = int("".join(filter(str.isdigit, completion.split()[0])))
-            correct = sample["correct_answer"]
+    def __init__(self):
+        self.last_feedback: list[str] = []
 
-            if answer == correct:
-                score = 1.0
-                feedback = f"Correct! {answer} is the right answer."
-            else:
-                score = 0.0
-                feedback = f"Wrong. The answer is {correct}, not {answer}."
-        except (ValueError, IndexError):
-            # Couldn't parse an answer
-            score = 0.0
-            feedback = f"Invalid answer format. Expected a number, got: {completion[:50]}"
+    def __call__(self, prompts, completions, correct_answer, **kwargs) -> list[float]:
+        scores = []
+        self.last_feedback = []
 
-        results.append({"score": score, "feedback": feedback})
+        for completion, answer in zip(completions, correct_answer):
+            try:
+                parsed = int("".join(filter(str.isdigit, completion.split()[0])))
+                if parsed == answer:
+                    scores.append(1.0)
+                    self.last_feedback.append("")
+                else:
+                    scores.append(0.0)
+                    self.last_feedback.append(f"Wrong. The answer is {answer}, not {parsed}.")
+            except (ValueError, IndexError):
+                scores.append(0.0)
+                self.last_feedback.append(f"Could not parse a number from: {completion[:50]}")
 
-    return results
+        return scores
 
 
 def main():
-    print("=" * 80)
-    print("SDPO Training - Basic Math Example")
-    print("=" * 80)
+    print("=== SDPO Training - Basic Math Example ===\n")
 
-    # 1. Load a small model (fits on most GPUs)
-    print("\n1. Loading Qwen-0.5B model...")
     model_name = "Qwen/Qwen2.5-0.5B-Instruct"
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
-
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
-    print(f"   ✓ Model loaded: {model_name}")
-    print(f"   ✓ Parameters: {model.num_parameters() / 1e6:.1f}M")
-
-    # 2. Create dataset
-    print("\n2. Creating math problem dataset...")
     dataset = create_math_dataset(num_samples=50)
-    print(f"   ✓ Dataset: {len(dataset)} problems")
-    print(f"   ✓ Example: {dataset[0]['prompt']}")
+    print(f"Dataset: {len(dataset)} problems")
+    print(f"Example: {dataset[0]['prompt'][0]['content']}\n")
 
-    # 3. Configure GRPO (base trainer settings)
-    print("\n3. Configuring training...")
     grpo_config = GRPOConfig(
         output_dir="./output/basic_sdpo",
-        # Generation settings
-        num_generations=4,  # 4 completions per prompt
-        max_completion_length=32,  # Short completions for math
+        num_generations=4,
+        max_completion_length=32,
         temperature=0.7,
-        # Training settings
         num_train_epochs=1,
-        per_device_train_batch_size=4,  # 4 prompts per batch
+        per_device_train_batch_size=4,
         gradient_accumulation_steps=2,
         learning_rate=1e-5,
-        # Logging
         logging_steps=1,
-        save_steps=100,
-        # Performance
+        save_strategy="no",
         bf16=True,
         remove_unused_columns=False,
     )
 
-    # 4. Configure SDPO (self-distillation settings)
+    # SDPOConfig defaults match the paper's experiment scripts.
+    # alpha=0.5 gives symmetric JSD, distillation_topk=100 captures >99% of mass.
     sdpo_config = SDPOConfig(
-        enabled=True,  # Enable SDPO (replaces GRPO loss)
-        # Core SDPO parameters
-        alpha=0.5,  # Generalized JSD balance (0.5 = symmetric)
-        distillation_topk=100,  # Top-100 logits for efficiency
-        teacher_mode="ema",  # EMA teacher (no third model)
-        ema_tau=0.05,  # EMA update rate: θ_t = 0.95*θ_t + 0.05*θ_s
-        ema_update_every=1,  # Update teacher every batch
-        # Importance sampling
-        is_coef=0.0,  # Disable IS correction for on-policy setting
-        is_clip=2.0,  # Clip IS weights (not used when is_coef=0)
-        # Reprompting (uses successful peer rollouts as teacher demos)
-        reprompt_teacher=True,
-        thinking_tag="<think>",  # Strip <think>...</think> from demos
+        enabled=True,
+        alpha=0.5,
+        distillation_topk=100,
+        teacher_mode="ema",
+        teacher_update_rate=0.05,
+        include_environment_feedback=True,
     )
 
-    print(f"   ✓ GRPO config: {grpo_config.num_generations} gens, batch={grpo_config.per_device_train_batch_size}")
-    print(
-        f"   ✓ SDPO config: alpha={sdpo_config.alpha}, topk={sdpo_config.distillation_topk}, EMA_tau={sdpo_config.ema_tau}"
-    )
+    reward_fn = MathReward()
 
-    # 5. Create trainer
-    print("\n4. Initializing SDPOTrainer...")
     trainer = SDPOTrainer(
         model=model,
         args=grpo_config,
         sdpo_config=sdpo_config,
         processing_class=tokenizer,
-        reward_funcs=[math_reward_function],
+        reward_funcs=[reward_fn],
         train_dataset=dataset,
     )
 
-    print("   ✓ SDPOTrainer initialized")
-    print("   ✓ EMA teacher: repurposed ref_model (2 models total)")
-
-    # 6. Train!
-    print("\n5. Starting training...")
-    print("   Note: This trains for 1 epoch (~50 problems)")
-    print("   Expected: Loss should decrease as model learns math")
-    print()
-
+    print("Starting training...\n")
     trainer.train()
-
-    print("\n" + "=" * 80)
-    print("Training complete! ✓")
-    print("=" * 80)
-    print("\nModel saved to:", grpo_config.output_dir)
-    print("\nWhat happened during training:")
-    print("  1. Generated 4 completions per math problem")
-    print("  2. Rewarded correct answers (1.0), penalized wrong answers (0.0)")
-    print("  3. Used successful peer answers as teacher demonstrations")
-    print("  4. Computed self-distillation loss (SDPO replaces GRPO loss)")
-    print("  5. Updated EMA teacher every batch (tau=0.05)")
-    print("\nNext steps:")
-    print("  - Try sdpo_with_unsloth.py for faster training with 4-bit quantization")
-    print("  - Try sdpo_rich_feedback.py for tasks with detailed error messages")
+    print("\nDone.")
 
 
 if __name__ == "__main__":
