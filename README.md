@@ -4,7 +4,7 @@
 
 A faithful reimplementation of SDPO ([arxiv:2601.20802](https://arxiv.org/abs/2601.20802)) from the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) verl fork, ported to the Hugging Face TRL ecosystem as a drop-in `GRPOTrainer` subclass.
 
-[![Tests](https://img.shields.io/badge/tests-115%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-218%20passing-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.10+-blue)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)]()
 
@@ -85,7 +85,7 @@ trainer.train()
 
 ### SDPOConfig Reference
 
-Every parameter matches the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) reference. Defaults are from the paper's experiment scripts.
+Parameters match the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) reference (see [Known Limitations](#known-limitations) for gaps). Defaults are from the paper's experiment scripts.
 
 ```python
 SDPOConfig(
@@ -183,7 +183,7 @@ SDPOConfig(alpha=0.5)   # JSD: symmetric Jensen-Shannon (paper default)
 SDPOConfig(alpha=1.0)   # Reverse KL: KL(student || teacher) -- mode-seeking
 ```
 
-The paper uses `alpha=0.5` for generalization experiments and `alpha=1.0` with `distillation_topk=20` for rich-feedback code tasks.
+The paper uses `alpha=0.5` (JSD) across its experiments. The [reference experiment scripts](https://github.com/lasgroup/SDPO) use `alpha=1.0` with `distillation_topk=20` for LiveCodeBench.
 
 ## How It Works
 
@@ -255,14 +255,22 @@ See [benchmark/README.md](benchmark/README.md) for full results and replication 
 | 7B | ~28 GB | ~10 GB |
 | 14B | ~56 GB | ~18 GB |
 
+## Known Limitations
+
+Two features from the paper / reference are not yet implemented:
+
+1. **Hybrid SDPO+GRPO blending (Section 4.5):** The paper defines a combined advantage `A = λ·A_GRPO + (1-λ)·A_SDPO` that interpolates between GRPO and SDPO. Our library supports `enabled=True` (pure SDPO) or `enabled=False` (pure GRPO) but not lambda blending. The paper shows this hybrid helps weaker models (e.g., Qwen3-0.6B).
+
+2. **`trust_region` teacher mode:** Declared in config validation but raises `NotImplementedError`. All paper experiments use EMA, so this is low priority.
+
 ## Citation
 
 ```bibtex
-@article{zhang2025sdpo,
+@article{hubotter2026sdpo,
   title={Reinforcement Learning via Self-Distillation},
-  author={Zhang, Xueying and Guo, Yunhao and Kwok, James T. and Krause, Andreas},
+  author={H{\"u}botter, Jonas and L{\"u}beck, Frederike and Behric, Lejs and Baumann, Anton and Bagatella, Marco and Marta, Daniel and Hakimi, Ido and Shenfeld, Idan and Kleine Buening, Thomas and Guestrin, Carlos and Krause, Andreas},
   journal={arXiv preprint arXiv:2601.20802},
-  year={2025}
+  year={2026}
 }
 ```
 

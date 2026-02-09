@@ -106,12 +106,14 @@ def compute_loss(self, model, inputs, ...):
 
 ## ✅ Test Coverage
 
-### Unit Tests (69 tests)
+### Unit Tests (105 tests)
 
 - ✅ Distillation module: 27 tests covering top-K KL, tail bucket, JSD, IS correction
 - ✅ Reprompting module: 19 tests covering templates, demo selection, thinking tags
 - ✅ Teacher module: 7 tests covering EMA updates and callback timing
 - ✅ Config module: 16 tests covering validation and defaults
+- ✅ Reference match: 34 tests verifying numerical parity with verl reference
+- ✅ Unsloth integration: 2 tests verifying compatibility
 
 ### End-to-End Tests (10 tests)
 
@@ -126,7 +128,7 @@ def compute_loss(self, model, inputs, ...):
 9. ✅ Training loop completes 10 steps
 10. ✅ Loss behaves reasonably over training
 
-**Total: 79/79 tests passing** ✅
+**Total: 115/115 tests passing** ✅
 
 ## ✅ Key Differences from Reference
 
@@ -178,7 +180,7 @@ def compute_loss(self, model, inputs, ...):
 
 ### Test Coverage: ✅ COMPREHENSIVE
 
-- 79 tests covering all components
+- 115 tests covering all components
 - Unit tests verify mathematical correctness
 - E2E tests verify integration with real models
 - All tests passing on GPU
@@ -197,7 +199,7 @@ def compute_loss(self, model, inputs, ...):
 
 **Verification #3 (Integration)**: ✅ PASS
 - Successfully trains real model (Qwen 0.5B)
-- All 79 tests passing
+- All 115 tests passing
 - E2E training loop completes successfully
 - EMA teacher updates correctly
 

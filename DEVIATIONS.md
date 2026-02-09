@@ -123,7 +123,7 @@ Our implementation is a **faithful reimplementation** of the SDPO algorithm adap
 - Tested with verl's full RL pipeline
 
 ### Our Implementation (TRL)
-- 79 comprehensive tests (69 unit + 10 e2e)
+- 115 comprehensive tests (105 unit + 10 e2e)
 - Tests verify:
   - Mathematical correctness (all formulas)
   - Integration with TRL
