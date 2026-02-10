@@ -1,6 +1,6 @@
 [project]
 name = "sdpo-rl"
-version = "0.0.1"
+version = "0.0.2"
 description = "Self-Distilled Policy Optimization (SDPO) for TRL — faithful reimplementation of arxiv:2601.20802"
 license = {text = "Apache-2.0"}
 readme = "README.md"
