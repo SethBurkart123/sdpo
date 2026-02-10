@@ -1,3 +1,6 @@
+> [!WARNING]  
+> Currently under development, not guaranteed to be at perfect parity with the SDPO paper.
+
 # sdpo-trainer
 
 **Self-Distilled Policy Optimization (SDPO) for Hugging Face TRL**
