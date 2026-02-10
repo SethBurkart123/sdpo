@@ -1,5 +1,5 @@
 """
-Tests for sdpo_trainer.teacher — EMA teacher management.
+Tests for sdpo_rl.teacher — EMA teacher management.
 
 Matches the behavior of DataParallelPPOActor._update_teacher from
 verl/workers/actor/dp_actor.py.
@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import pytest
 
-from sdpo_trainer.teacher import ema_update, EMATeacherCallback
+from sdpo_rl.teacher import ema_update, EMATeacherCallback
 
 
 # ---------------------------------------------------------------------------

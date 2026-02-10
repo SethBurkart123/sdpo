@@ -17,7 +17,7 @@ from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import GRPOConfig
 
-from sdpo_trainer import SDPOConfig, SDPOTrainer
+from sdpo_rl import SDPOConfig, SDPOTrainer
 
 
 def create_math_dataset(num_samples: int = 100) -> Dataset:

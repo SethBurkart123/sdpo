@@ -88,7 +88,7 @@ class TestUnslothIntegration:
 
     def test_trainer_instantiates(self, unsloth_model_and_tokenizer, small_dataset, tmp_path):
         """SDPOTrainer should accept an Unsloth-patched model."""
-        from sdpo_trainer import SDPOConfig, SDPOTrainer
+        from sdpo_rl import SDPOConfig, SDPOTrainer
         from trl import GRPOConfig
 
         model, tokenizer = unsloth_model_and_tokenizer
@@ -129,7 +129,7 @@ class TestUnslothIntegration:
 
     def test_short_training_run(self, unsloth_model_and_tokenizer, small_dataset, tmp_path):
         """A few training steps should complete without error."""
-        from sdpo_trainer import SDPOConfig, SDPOTrainer
+        from sdpo_rl import SDPOConfig, SDPOTrainer
         from trl import GRPOConfig
 
         model, tokenizer = unsloth_model_and_tokenizer

@@ -13,6 +13,7 @@ uv.lock
 
 test_output/
 SDPO_reference/
+test/
 
 # macOS
 .DS_Store

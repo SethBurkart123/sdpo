@@ -1,11 +1,11 @@
-# SDPO-Trainer Examples
+# SDPO-RL Examples
 
 Runnable examples demonstrating SDPO training for different tasks and configurations. All use Qwen2.5-0.5B which fits on consumer GPUs.
 
 ## Quick Start
 
 ```bash
-pip install sdpo-trainer transformers datasets
+pip install sdpo-rl transformers datasets
 
 python examples/basic_sdpo.py            # Math (addition)
 python examples/sdpo_with_unsloth.py     # Reasoning with Unsloth + QLoRA
@@ -30,7 +30,7 @@ Same idea, but with Unsloth for 2x faster training and 60% less memory. Shows th
 ```python
 from unsloth import FastLanguageModel, PatchFastRL
 PatchFastRL("GRPO", FastLanguageModel)       # Patch FIRST
-from sdpo_trainer import SDPOTrainer, SDPOConfig  # Import SECOND
+from sdpo_rl import SDPOTrainer, SDPOConfig  # Import SECOND
 ```
 
 - 4-bit quantization, LoRA rank 16
@@ -70,7 +70,7 @@ grpo_config = GRPOConfig(
 ### SDPOConfig (self-distillation)
 
 ```python
-from sdpo_trainer import SDPOConfig
+from sdpo_rl import SDPOConfig
 
 sdpo_config = SDPOConfig(
     enabled=True,                              # SDPO replaces GRPO loss
@@ -123,6 +123,6 @@ All examples work on free GPU platforms (Google Colab T4, Kaggle).
 
 **OOM:** Reduce `num_generations` or `per_device_train_batch_size`, or use Unsloth.
 
-**Import errors with Unsloth:** Make sure `PatchFastRL("GRPO", FastLanguageModel)` is called _before_ `from sdpo_trainer import SDPOTrainer`.
+**Import errors with Unsloth:** Make sure `PatchFastRL("GRPO", FastLanguageModel)` is called _before_ `from sdpo_rl import SDPOTrainer`.
 
 **Reward function TypeError:** Reward functions must return `list[float]`, not `list[dict]`. Store feedback on `self.last_feedback` instead.

@@ -49,7 +49,7 @@ from csv_logger import CSVLogger
 from reward_mbpp import FormatRewardFunction, MBPPRewardFunction
 
 # Import our library AFTER PatchFastRL
-from sdpo_trainer import SDPOConfig, SDPOTrainer
+from sdpo_rl import SDPOConfig, SDPOTrainer
 
 
 def main():

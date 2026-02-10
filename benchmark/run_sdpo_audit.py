@@ -54,7 +54,7 @@ from csv_logger import CSVLogger
 from reward_mbpp import FormatRewardFunction, MBPPRewardFunction
 
 # Import our library AFTER PatchFastRL
-from sdpo_trainer import SDPOConfig, SDPOTrainer
+from sdpo_rl import SDPOConfig, SDPOTrainer
 
 # ---------------------------------------------------------------------------
 # Reference distillation loss — extracted verbatim from verl core_algos.py
@@ -157,8 +157,8 @@ class AuditSDPOTrainer(SDPOTrainer):
 
     def _install_audit_hook(self):
         """Patch the distillation module so every call also runs the reference."""
-        import sdpo_trainer.distillation as dist_mod
-        import sdpo_trainer.trainer as trainer_mod
+        import sdpo_rl.distillation as dist_mod
+        import sdpo_rl.trainer as trainer_mod
 
         original_fn = dist_mod.compute_self_distillation_loss
         audit_trainer = self  # capture for closure

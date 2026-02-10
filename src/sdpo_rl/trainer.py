@@ -23,14 +23,14 @@ import torch.nn as nn
 from transformers import PreTrainedModel, PreTrainedTokenizerBase, TrainerCallback
 from trl import GRPOConfig, GRPOTrainer
 
-from sdpo_trainer.config import SDPOConfig
-from sdpo_trainer.distillation import compute_self_distillation_loss
-from sdpo_trainer.reprompting import (
+from sdpo_rl.config import SDPOConfig
+from sdpo_rl.distillation import compute_self_distillation_loss
+from sdpo_rl.reprompting import (
     build_teacher_prompts,
     compute_self_distillation_mask,
     select_demonstration,
 )
-from sdpo_trainer.teacher import EMATeacherCallback, ema_update
+from sdpo_rl.teacher import EMATeacherCallback, ema_update
 
 logger = logging.getLogger(__name__)
 

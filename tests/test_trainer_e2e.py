@@ -29,7 +29,7 @@ from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import GRPOConfig
 
-from sdpo_trainer import SDPOConfig, SDPOTrainer
+from sdpo_rl import SDPOConfig, SDPOTrainer
 
 
 # ---------------------------------------------------------------------------

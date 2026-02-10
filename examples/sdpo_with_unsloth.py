@@ -18,7 +18,7 @@ from unsloth import FastLanguageModel, PatchFastRL
 PatchFastRL("GRPO", FastLanguageModel)
 
 # Step 2: Now safe to import SDPOTrainer (inherits patched GRPOTrainer)
-from sdpo_trainer import SDPOConfig, SDPOTrainer
+from sdpo_rl import SDPOConfig, SDPOTrainer
 from trl import GRPOConfig
 from datasets import Dataset
 

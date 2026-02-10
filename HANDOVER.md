@@ -1,8 +1,8 @@
-# SDPO-Trainer: Agent Handover Document
+# SDPO-RL: Agent Handover Document
 
 ## What This Project Is
 
-A standalone pip-installable library (`sdpo-trainer`) that brings **Self-Distilled
+A standalone pip-installable library (`sdpo-rl`) that brings **Self-Distilled
 Policy Optimization** (SDPO) to Hugging Face TRL's `GRPOTrainer`. It is a faithful
 reimplementation of [arxiv:2601.20802](https://arxiv.org/abs/2601.20802), matching the
 reference code at [lasgroup/SDPO](https://github.com/lasgroup/SDPO) (a verl fork).
@@ -107,7 +107,7 @@ With `num_iterations=1` (default), this is every optimizer step.
 
 ### 5. Import Order for Unsloth
 
-Unsloth's `PatchFastRL("GRPO", ...)` must be called BEFORE `from sdpo_trainer import
+Unsloth's `PatchFastRL("GRPO", ...)` must be called BEFORE `from sdpo_rl import
 SDPOTrainer`. Python's MRO resolves `super()` calls at call time, so if Unsloth
 patches `GRPOTrainer` methods before our subclass is imported, `super()` calls in
 `_generate_and_score_completions` will go to the patched (optimized) version.
@@ -179,7 +179,7 @@ See Architecture Decision #6 above.
 
 ## File-by-File Reference
 
-### `src/sdpo_trainer/distillation.py`
+### `src/sdpo_rl/distillation.py`
 
 The mathematical core. Contains:
 
@@ -191,7 +191,7 @@ The mathematical core. Contains:
 
 All match `verl/trainer/ppo/core_algos.py::compute_self_distillation_loss` exactly.
 
-### `src/sdpo_trainer/reprompting.py`
+### `src/sdpo_rl/reprompting.py`
 
 Teacher prompt construction. Contains:
 
@@ -202,7 +202,7 @@ Teacher prompt construction. Contains:
 
 Default templates match `verl/workers/config/actor.py::SelfDistillationConfig`.
 
-### `src/sdpo_trainer/teacher.py`
+### `src/sdpo_rl/teacher.py`
 
 EMA teacher management. Contains:
 
@@ -211,15 +211,15 @@ EMA teacher management. Contains:
 
 Matches `verl/workers/actor/dp_actor.py::DataParallelPPOActor._update_teacher`.
 
-### `src/sdpo_trainer/config.py`
+### `src/sdpo_rl/config.py`
 
 `SDPOConfig` dataclass. Defaults match paper experiment scripts. Validates alpha range,
 teacher mode, truncation side, topk.
 
-### `src/sdpo_trainer/utils.py`
+### `src/sdpo_rl/utils.py`
 
 `check_unsloth_import_order()` — runtime detection that warns if Unsloth is installed
-but PatchFastRL wasn't called before importing sdpo_trainer.
+but PatchFastRL wasn't called before importing sdpo_rl.
 
 ---
 
@@ -249,7 +249,7 @@ teacher's extra prompt tokens only affect attention context, not extracted posit
 - Run tests: `uv run pytest`
 - Add dependency: `uv add <package>`
 - Build backend: `hatchling`
-- Package source layout: `src/sdpo_trainer/`
+- Package source layout: `src/sdpo_rl/`
 - Platform: Linux, tested on NVIDIA RTX 3080 (10GB)
 
 ---

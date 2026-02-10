@@ -1,5 +1,5 @@
 """
-Utility functions for sdpo-trainer.
+Utility functions for sdpo-rl.
 
 Includes Unsloth detection and import order validation.
 """
@@ -40,9 +40,9 @@ def check_unsloth_import_order() -> bool:
             import unsloth  # noqa: F401
 
             warnings.warn(
-                "Unsloth is installed but PatchFastRL was not called before importing sdpo_trainer. "
+                "Unsloth is installed but PatchFastRL was not called before importing sdpo_rl. "
                 "For Unsloth optimizations, call PatchFastRL('GRPO', FastLanguageModel) BEFORE "
-                "importing from sdpo_trainer.",
+                "importing from sdpo_rl.",
                 UserWarning,
                 stacklevel=3,
             )

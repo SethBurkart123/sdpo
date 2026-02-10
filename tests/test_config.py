@@ -1,8 +1,8 @@
-"""Tests for sdpo_trainer.config — SDPOConfig validation."""
+"""Tests for sdpo_rl.config — SDPOConfig validation."""
 
 import pytest
 
-from sdpo_trainer.config import SDPOConfig
+from sdpo_rl.config import SDPOConfig
 
 
 class TestSDPOConfigDefaults:

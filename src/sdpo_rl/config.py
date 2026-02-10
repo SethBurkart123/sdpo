@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sdpo_trainer.reprompting import (
+from sdpo_rl.reprompting import (
     DEFAULT_FEEDBACK_TEMPLATE,
     DEFAULT_REPROMPT_TEMPLATE,
     DEFAULT_SOLUTION_TEMPLATE,

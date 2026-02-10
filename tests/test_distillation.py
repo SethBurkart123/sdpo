@@ -1,5 +1,5 @@
 """
-Tests for sdpo_trainer.distillation — the mathematical core of SDPO.
+Tests for sdpo_rl.distillation — the mathematical core of SDPO.
 
 These tests verify that our implementation of the self-distillation loss matches
 the verl reference implementation (lasgroup/SDPO, verl/trainer/ppo/core_algos.py).
@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 import pytest
 
-from sdpo_trainer.distillation import (
+from sdpo_rl.distillation import (
     add_tail_bucket,
     top_k_kl_divergence,
     compute_self_distillation_loss,

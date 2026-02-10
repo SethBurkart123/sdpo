@@ -204,7 +204,7 @@ trainer.train()
 
 **TRL (ours)**:
 ```python
-from sdpo_trainer import SDPOTrainer, SDPOConfig
+from sdpo_rl import SDPOTrainer, SDPOConfig
 from trl import GRPOConfig
 
 grpo_config = GRPOConfig(

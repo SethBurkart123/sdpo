@@ -31,7 +31,7 @@ pip install sdpo-rl
 ```
 
 ```python
-from sdpo_trainer import SDPOTrainer, SDPOConfig
+from sdpo_rl import SDPOTrainer, SDPOConfig
 from trl import GRPOConfig
 
 grpo_config = GRPOConfig(
@@ -65,7 +65,7 @@ from unsloth import FastLanguageModel, PatchFastRL
 # CRITICAL: Patch BEFORE importing SDPOTrainer
 PatchFastRL("GRPO", FastLanguageModel)
 
-from sdpo_trainer import SDPOTrainer, SDPOConfig
+from sdpo_rl import SDPOTrainer, SDPOConfig
 
 model, tokenizer = FastLanguageModel.from_pretrained(
     "Qwen/Qwen2.5-7B-Instruct",

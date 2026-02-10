@@ -1,10 +1,10 @@
 # Unsloth Integration Guide
 
-This document explains how to use SDPO-Trainer with Unsloth optimizations.
+This document explains how to use SDPO-RL with Unsloth optimizations.
 
 ## Overview
 
-SDPO-Trainer is compatible with Unsloth's optimization framework. However, because SDPO requires custom implementations of `compute_loss` and `_generate_and_score_completions`, some (but not all) Unsloth optimizations will apply.
+SDPO-RL is compatible with Unsloth's optimization framework. However, because SDPO requires custom implementations of `compute_loss` and `_generate_and_score_completions`, some (but not all) Unsloth optimizations will apply.
 
 ## What Works
 
@@ -43,11 +43,11 @@ from unsloth import FastLanguageModel, PatchFastRL
 PatchFastRL("GRPO", FastLanguageModel)
 
 # Now import SDPO (which internally imports GRPOTrainer)
-from sdpo_trainer import SDPOTrainer, SDPOConfig
+from sdpo_rl import SDPOTrainer, SDPOConfig
 from trl import GRPOConfig
 
 # ❌ WRONG: Importing SDPO before patching will use unpatched GRPOTrainer
-# from sdpo_trainer import SDPOTrainer  # Don't do this first!
+# from sdpo_rl import SDPOTrainer  # Don't do this first!
 # from unsloth import PatchFastRL
 # PatchFastRL("GRPO", ...)
 ```
@@ -245,7 +245,7 @@ For best results on a single GPU (24GB VRAM):
 from unsloth import FastLanguageModel, PatchFastRL
 PatchFastRL("GRPO", FastLanguageModel)
 
-from sdpo_trainer import SDPOTrainer, SDPOConfig
+from sdpo_rl import SDPOTrainer, SDPOConfig
 from trl import GRPOConfig
 
 # Load with QLoRA

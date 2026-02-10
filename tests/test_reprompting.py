@@ -1,5 +1,5 @@
 """
-Tests for sdpo_trainer.reprompting — teacher prompt construction.
+Tests for sdpo_rl.reprompting — teacher prompt construction.
 
 Matches the behavior of _maybe_build_self_distillation_batch, _collect_solutions_by_uid,
 _get_solution, and _build_teacher_message from verl/trainer/ppo/ray_trainer.py.
@@ -7,7 +7,7 @@ _get_solution, and _build_teacher_message from verl/trainer/ppo/ray_trainer.py.
 
 import pytest
 
-from sdpo_trainer.reprompting import (
+from sdpo_rl.reprompting import (
     build_teacher_prompts,
     select_demonstration,
     remove_thinking_tags,
@@ -309,7 +309,7 @@ class TestSelfDistillationMaskConstruction:
                 exclude_self=True,
             )
 
-        from sdpo_trainer.reprompting import compute_self_distillation_mask
+        from sdpo_rl.reprompting import compute_self_distillation_mask
 
         mask = compute_self_distillation_mask(solutions, rollout_data["feedback"])
         assert len(mask) == 8

@@ -17,14 +17,14 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from sdpo_trainer.distillation import (
+from sdpo_rl.distillation import (
     add_tail_bucket,
     aggregate_loss,
     apply_importance_sampling_correction,
     compute_self_distillation_loss,
     top_k_kl_divergence,
 )
-from sdpo_trainer.reprompting import (
+from sdpo_rl.reprompting import (
     build_teacher_prompts,
     compute_self_distillation_mask,
     remove_thinking_tags,
