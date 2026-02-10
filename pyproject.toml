@@ -1,5 +1,5 @@
 [project]
-name = "sdpo-trainer"
+name = "sdpo-rl"
 version = "0.1.0"
 description = "Self-Distilled Policy Optimization (SDPO) for TRL — faithful reimplementation of arxiv:2601.20802"
 license = {text = "Apache-2.0"}
