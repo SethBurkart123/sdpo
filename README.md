@@ -1,7 +1,7 @@
 > [!WARNING]  
 > Currently under development, not guaranteed to be at perfect parity with the SDPO paper.
 
-# sdpo-trainer
+# sdpo-rl
 
 **Self-Distilled Policy Optimization (SDPO) for Hugging Face TRL**
 
@@ -27,7 +27,7 @@ The teacher sees "here's a working solution and the error from your last attempt
 ## Quick Start
 
 ```bash
-pip install sdpo-trainer
+pip install sdpo-rl
 ```
 
 ```python
