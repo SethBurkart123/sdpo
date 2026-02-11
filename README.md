@@ -2,7 +2,7 @@
 
 **Self-Distilled Policy Optimization (SDPO) for Hugging Face TRL**
 
-A faithful reimplementation of SDPO ([arxiv:2601.20802](https://arxiv.org/abs/2601.20802)) from the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) verl fork, ported to the Hugging Face TRL ecosystem as a drop-in `GRPOTrainer` subclass.
+A faithful reimplementation of SDPO ([arxiv:2601.20802](https://arxiv.org/abs/2601.20802)) from the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) verl fork, ported to the **Hugging Face TRL** ecosystem as a drop-in `GRPOTrainer` subclass and included support for **Unsloth**.
 
 [![PyPI](https://img.shields.io/pypi/v/sdpo-rl)](https://pypi.org/project/sdpo-rl/)
 [![Python](https://img.shields.io/badge/python-3.10+-blue)]()
