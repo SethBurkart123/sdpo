@@ -20,6 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+lora = ["peft>=0.14.0"]
 unsloth = ["unsloth"]
 test = ["pytest", "pytest-cov"]
 dev = ["pytest", "pytest-cov", "ruff"]

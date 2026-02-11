@@ -31,7 +31,13 @@ from sdpo_rl.reprompting import (
     compute_self_distillation_mask,
     select_demonstration,
 )
-from sdpo_rl.teacher import EMATeacherCallback, ema_update
+from sdpo_rl.teacher import (
+    EMATeacherCallback,
+    LORA_EMA_TEACHER_ADAPTER,
+    LoraEMATeacherCallback,
+    ema_update,
+    init_lora_ema_teacher,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,28 +106,50 @@ class SDPOTrainer(GRPOTrainer):
             **kwargs,
         )
 
-        # GRPOTrainer doesn't create ref_model when beta=0, so create it ourselves
-        if self.ref_model is None:
-            self.ref_model = copy.deepcopy(self.model)
-            self.ref_model.eval()
-            for p in self.ref_model.parameters():
-                p.requires_grad = False
-            if hasattr(self, "accelerator"):
-                self.ref_model = self.accelerator.prepare(self.ref_model)
-
-        if self.sdpo_config.teacher_mode == "ema":
-            self.ema_callback = EMATeacherCallback(
-                teacher_model=self.ref_model,
-                student_model=self.model,
+        # --- Teacher setup ---
+        # lora_ema: shared base model with two LoRA adapters (no deepcopy needed).
+        # ema/frozen: separate ref_model via deepcopy (GRPOTrainer skips it when beta=0).
+        if self.sdpo_config.teacher_mode == "lora_ema":
+            init_lora_ema_teacher(self.model)
+            # The "teacher" is the same model with a different adapter active.
+            # We still set ref_model so that compute_loss has a unified interface,
+            # but in lora_ema mode we switch adapters instead of using ref_model.
+            self.ref_model = self.model
+            self.ema_callback = LoraEMATeacherCallback(
+                model=self.model,
                 update_rate=self.sdpo_config.teacher_update_rate,
                 num_iterations=self.args.num_iterations,
             )
-            # Register a proper TrainerCallback so EMA fires once per optimizer step
             self.add_callback(_EMAStepCallback(self))
-        elif self.sdpo_config.teacher_mode == "frozen":
-            self.ema_callback = None
+            logger.info(
+                "lora_ema teacher mode: using multi-adapter on shared base model "
+                "(no deepcopy, ~%.1f GB saved for typical 7B QLoRA).",
+                3.5,
+            )
         else:
-            raise NotImplementedError(f"teacher_mode='{self.sdpo_config.teacher_mode}' not yet supported")
+            # Standard path: create a separate ref_model via deepcopy
+            if self.ref_model is None:
+                self.ref_model = copy.deepcopy(self.model)
+                self.ref_model.eval()
+                for p in self.ref_model.parameters():
+                    p.requires_grad = False
+                if hasattr(self, "accelerator"):
+                    self.ref_model = self.accelerator.prepare(self.ref_model)
+
+            if self.sdpo_config.teacher_mode == "ema":
+                self.ema_callback = EMATeacherCallback(
+                    teacher_model=self.ref_model,
+                    student_model=self.model,
+                    update_rate=self.sdpo_config.teacher_update_rate,
+                    num_iterations=self.args.num_iterations,
+                )
+                self.add_callback(_EMAStepCallback(self))
+            elif self.sdpo_config.teacher_mode == "frozen":
+                self.ema_callback = None
+            elif self.sdpo_config.teacher_mode == "trust_region":
+                raise NotImplementedError("teacher_mode='trust_region' not yet implemented")
+            else:
+                raise NotImplementedError(f"teacher_mode='{self.sdpo_config.teacher_mode}' not yet supported")
 
         # Stash for feedback strings collected from reward functions
         self._last_feedback_strings: list[str | None] | None = None
@@ -356,8 +384,15 @@ class SDPOTrainer(GRPOTrainer):
         ).squeeze(-1)
 
         # --- Teacher forward pass ---
+        # In lora_ema mode, the teacher is the same model with a different adapter.
+        # We switch to the teacher adapter, run the forward pass, then switch back.
+        is_lora_ema = self.sdpo_config.teacher_mode == "lora_ema"
+        if is_lora_ema:
+            model.set_adapter(LORA_EMA_TEACHER_ADAPTER)
+
         with torch.no_grad():
-            teacher_outputs = self.ref_model(
+            teacher_model = model if is_lora_ema else self.ref_model
+            teacher_outputs = teacher_model(
                 input_ids=teacher_input_ids,
                 attention_mask=teacher_attention_mask,
                 position_ids=teacher_position_ids,
@@ -378,6 +413,9 @@ class SDPOTrainer(GRPOTrainer):
             teacher_per_token_logps = torch.gather(
                 teacher_log_probs_full, dim=-1, index=completion_ids.unsqueeze(-1)
             ).squeeze(-1)
+
+        if is_lora_ema:
+            model.set_adapter("default")
 
         # --- Compute SDPO loss ---
         loss, metrics = compute_self_distillation_loss(

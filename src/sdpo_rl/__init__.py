@@ -19,7 +19,14 @@ from sdpo_rl.reprompting import (
     remove_thinking_tags,
     select_demonstration,
 )
-from sdpo_rl.teacher import EMATeacherCallback, ema_update
+from sdpo_rl.teacher import (
+    EMATeacherCallback,
+    LORA_EMA_TEACHER_ADAPTER,
+    LoraEMATeacherCallback,
+    ema_update,
+    ema_update_lora_adapters,
+    init_lora_ema_teacher,
+)
 from sdpo_rl.trainer import SDPOTrainer
 
 __all__ = [
@@ -35,5 +42,9 @@ __all__ = [
     "remove_thinking_tags",
     "select_demonstration",
     "EMATeacherCallback",
+    "LORA_EMA_TEACHER_ADAPTER",
+    "LoraEMATeacherCallback",
     "ema_update",
+    "ema_update_lora_adapters",
+    "init_lora_ema_teacher",
 ]

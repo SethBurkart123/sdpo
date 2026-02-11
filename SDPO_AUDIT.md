@@ -346,7 +346,22 @@ def ema_update_adapters(model, student_adapter, teacher_adapter, rate):
 
 **Dependency:** `peft` becomes an optional dependency (guarded by try/except).
 
-**Status:** `[ ] NOT STARTED`
+**Status:** `[x] DONE`
+
+**Files changed:**
+- `src/sdpo_rl/teacher.py` — Added `collect_lora_adapter_pairs`, `ema_update_lora_adapters`, `init_lora_ema_teacher`, `LoraEMATeacherCallback`, `LORA_EMA_TEACHER_ADAPTER` constant.
+- `src/sdpo_rl/trainer.py` — `__init__` handles `lora_ema` mode (skips deepcopy, calls `init_lora_ema_teacher`). `compute_loss` switches adapters for teacher forward pass.
+- `src/sdpo_rl/__init__.py` — Exports new lora_ema symbols.
+- `pyproject.toml` — Added `lora` optional dependency (`peft>=0.14.0`).
+- `tests/test_teacher.py` — 17 new tests covering adapter pair collection, init, EMA update, callback, base weight immutability, convergence, and adapter-switching output divergence.
+
+**Implementation details:**
+- Uses PEFT's multi-adapter API: `model.add_adapter("sdpo_teacher", config)` creates a second set of LoRA weights on the shared base model.
+- `init_lora_ema_teacher` copies student weights into teacher adapter, freezes teacher params, and leaves student ("default") active.
+- `ema_update_lora_adapters` iterates `module.lora_A[adapter]` / `module.lora_B[adapter]` directly — no state_dict overhead, in-place update with dtype handling.
+- `compute_loss` switches to teacher adapter with `model.set_adapter(LORA_EMA_TEACHER_ADAPTER)`, runs forward pass, then switches back to "default".
+- Teacher adapter weights are bf16 when created by PEFT (matching base model dtype). EMA update handles float32→bf16 conversion via `.to(dtype=teacher_p.dtype)`.
+- All 133 tests pass (24 teacher tests, 109 other non-GPU tests).
 
 ---
 
