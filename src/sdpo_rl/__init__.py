@@ -3,7 +3,7 @@ sdpo-rl: Self-Distilled Policy Optimization for TRL.
 Faithful reimplementation of https://arxiv.org/abs/2601.20802 (lasgroup/SDPO).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.0.3"
 
 from sdpo_rl.config import SDPOConfig
 from sdpo_rl.distillation import (

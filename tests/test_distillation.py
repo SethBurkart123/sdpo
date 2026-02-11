@@ -498,7 +498,7 @@ class TestComputeSelfDistillationLoss:
         Bug Fix 3: When topk log-probs are None (non-full-logit mode), the
         fallback path uses REINFORCE-style reverse KL which requires
         teacher_log_probs to be non-None. The reference always passes
-        teacher per-token log-probs. See SDPO_AUDIT.md Bug 3.
+        teacher per-token log-probs. See dev/audit.md Bug 3.
         """
         student_lp, teacher_lp = small_log_probs
         # Use per-token log-probs (as if gathered at the completion token)

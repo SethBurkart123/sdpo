@@ -256,7 +256,7 @@ class SDPOTrainer(GRPOTrainer):
         # --- Build structured teacher messages preserving system prompts ---
         # The reference (ray_trainer.py:710-744) preserves system messages from
         # the original prompt and only replaces the final user turn. Our previous
-        # code wrapped everything in a single user message — Bug 1 in SDPO_AUDIT.md.
+        # code wrapped everything in a single user message — Bug 1 in dev/audit.md.
         #
         # RepeatSampler repeats each prompt G times, so raw_prompts has batch_size
         # entries where each group of G shares the same prompt messages.
@@ -277,7 +277,7 @@ class SDPOTrainer(GRPOTrainer):
 
         # --- Tokenize teacher prompts ---
         # Matches verl: apply_chat_template with continue_final_message=False and
-        # enable_thinking if configured. See SDPO_AUDIT.md Bug 2.
+        # enable_thinking if configured. See dev/audit.md Bug 2.
         chat_template_kwargs = {
             "tokenize": True,
             "return_tensors": "pt",

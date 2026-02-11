@@ -1,4 +1,6 @@
-# SDPO-RL: Agent Handover Document
+# SDPO-RL: Internal Handover Document
+
+> **This is an internal development document.** For user-facing documentation, see [docs/](../docs/) and the [README](../README.md).
 
 ## What This Project Is
 
@@ -22,7 +24,7 @@ We did deep-dive research into:
    lasgroup/SDPO repository. We know exactly how every function works.
 2. **TRL GRPOTrainer internals** — mapped every method signature, the buffering
    system (`_prepare_inputs`, `_buffered_inputs`, `steps_per_generation`), the
-   loss computation (`compute_loss` → `_compute_loss`), and the counter semantics
+   loss computation (`compute_loss` -> `_compute_loss`), and the counter semantics
    (`_step` vs `global_step` vs `num_iterations`).
 3. **Unsloth's patching mechanism** — how `PatchFastRL` replaces `GRPOTrainer` in
    the `trl` module namespace, and what that means for subclass method resolution.
@@ -174,7 +176,7 @@ See Architecture Decision #4 above.
 ### Gotcha 5: Self-Distillation Mask
 Not every sample has a successful peer or feedback. The `self_distillation_mask` is
 `(batch_size,)` and zeros out samples without teacher signal. These contribute zero
-loss. A batch where nothing succeeds → loss = 0 → no gradient update. This is correct
+loss. A batch where nothing succeeds -> loss = 0 -> no gradient update. This is correct
 behavior per the paper.
 
 ### Gotcha 6: Three Models = OOM
@@ -194,7 +196,7 @@ The trainer must detect which format is returned and extract feedback accordingl
 Standard `list[float]` functions still work — they just provide no feedback.
 
 ### Gotcha 9: Config Defaults Mismatch
-See Architecture Decision #6 above.
+See Architecture Decision #7 above.
 
 ---
 
@@ -227,7 +229,7 @@ Default templates match `verl/workers/config/actor.py::SelfDistillationConfig`.
 
 EMA teacher management. Contains:
 
-- `ema_update(teacher, student, rate)` — `θ_t = (1-α)θ_t + αθ_s`
+- `ema_update(teacher, student, rate)` — `theta_t = (1-alpha)*theta_t + alpha*theta_s`
 - `EMATeacherCallback(teacher_model, student_model, update_rate, num_iterations)` — timing
 - `LORA_EMA_TEACHER_ADAPTER` — constant `"sdpo_teacher"`
 - `init_lora_ema_teacher(model)` — creates teacher adapter, copies weights, freezes

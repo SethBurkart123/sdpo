@@ -89,7 +89,7 @@ class TestSDPOConfigChatTemplateKwargs:
     Bug Fix 2: apply_chat_template_kwargs must be forwarded to the
     tokenizer's apply_chat_template call. The reference passes
     enable_thinking and continue_final_message explicitly.
-    See SDPO_AUDIT.md Bug 2.
+    See dev/audit.md Bug 2.
     """
 
     def test_default_is_empty_dict(self):

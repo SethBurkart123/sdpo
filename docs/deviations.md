@@ -116,24 +116,7 @@ Our implementation is a **faithful reimplementation** of the SDPO algorithm adap
 
 **Impact**: Standard TRL logging. Slightly different metric names but same information.
 
-## 8. Test Coverage
-
-### Reference (verl)
-- Integration tests within verl's test suite
-- Tested with verl's full RL pipeline
-
-### Our Implementation (TRL)
-- 137+ comprehensive tests (123 unit + 10 e2e + 4 GPU example smoke tests)
-- Tests verify:
-  - Mathematical correctness (all formulas)
-  - Integration with TRL
-  - Real model training (Qwen 0.5B on GPU)
-  - LoRA EMA adapter operations (init, collect pairs, EMA update, callback)
-- Higher test coverage than reference
-
-**Impact**: More thorough testing of core algorithms in isolation.
-
-## 9. Memory Optimization Strategy
+## 8. Memory Optimization Strategy
 
 ### Reference (verl)
 - Relies on Ray's memory management
@@ -148,7 +131,7 @@ Our implementation is a **faithful reimplementation** of the SDPO algorithm adap
 
 **Impact**: Different optimization strategies but similar memory footprint for core SDPO computation. LoRA EMA provides additional savings for PEFT users.
 
-## 10.5. Chat Template Configuration
+## 9. Chat Template Configuration
 
 ### Reference (verl)
 - N/A (verl handles tokenization differently)
@@ -177,20 +160,20 @@ Our implementation is a **faithful reimplementation** of the SDPO algorithm adap
 
 The following are **identical** to the reference:
 
-✅ All mathematical formulas (loss, KL, tail bucket, IS correction)
-✅ Reprompting templates (character-for-character match)
-✅ EMA update formula and timing
-✅ Configuration defaults (alpha, topk, rates, thresholds)
-✅ Demonstration selection logic
-✅ Self-distillation mask computation
-✅ Zero-coverage handling
-✅ Numerical stability measures (clamping, etc.)
-✅ Teacher management (2 models, not 3; or 1 model with 2 adapters in lora_ema mode)
-✅ Loss replacement behavior (SDPO replaces GRPO entirely)
+- All mathematical formulas (loss, KL, tail bucket, IS correction)
+- Reprompting templates (character-for-character match)
+- EMA update formula and timing
+- Configuration defaults (alpha, topk, rates, thresholds)
+- Demonstration selection logic
+- Self-distillation mask computation
+- Zero-coverage handling
+- Numerical stability measures (clamping, etc.)
+- Teacher management (2 models, not 3; or 1 model with 2 adapters in lora_ema mode)
+- Loss replacement behavior (SDPO replaces GRPO entirely)
 
 ---
 
-## Migration Guide: verl → TRL
+## Migration Guide: verl to TRL
 
 If you're familiar with verl's SDPO and want to use our TRL implementation:
 

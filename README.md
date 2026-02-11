@@ -1,18 +1,49 @@
-> [!WARNING]  
-> Currently under development, not guaranteed to be at perfect parity with the SDPO paper.
-
 # sdpo-rl
 
 **Self-Distilled Policy Optimization (SDPO) for Hugging Face TRL**
 
 A faithful reimplementation of SDPO ([arxiv:2601.20802](https://arxiv.org/abs/2601.20802)) from the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) verl fork, ported to the Hugging Face TRL ecosystem as a drop-in `GRPOTrainer` subclass.
 
+[![PyPI](https://img.shields.io/pypi/v/sdpo-rl)](https://pypi.org/project/sdpo-rl/)
 [![Python](https://img.shields.io/badge/python-3.10+-blue)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)]()
 
 ## What is SDPO?
 
-SDPO (Self-Distilled Policy Optimization) replaces GRPO's scalar reward loss with **token-level self-distillation** from a teacher model. On each batch:
+### The Core Idea
+
+- When you give a model a good example in its prompt, it performs better.
+- Give it two good examples and it performs even better.
+- SDPO figured out how to distill that improvement back into the base model — so it behaves as if it always has those examples, without actually needing them in the prompt.
+- This process repeats, compounding the model's capability over successive rounds.
+
+### Where Do High-Quality Examples Come From?
+
+- **Environment feedback:** Feedback from some environment (e.g., a Python interpreter)
+- **Human-authored work:** Handwritten worked examples, reasoning traces, or notes
+- **Best-of-N sampling:** Prompt the model multiple times for the same task, then keep whichever answer passes your evaluation criteria
+- **Distillation from a stronger model:** Stronger model reasoning traces
+- **Deep research pipelines:** Answers or relevant context fetched from reputable sources
+
+The higher the quality of your examples, the more powerful your model. Think creatively about where you can get high-quality examples. Multiple examples drive up quality. If adding an example to the context improves the answer, SDPO pushes towards higher quality; if it degrades the answer, SDPO pushes towards lower quality. Be careful about the quality you train with.
+
+### How Do You Measure Example Quality?
+
+- **Pass-rate scoring:** Generate hundreds of outputs per problem, measure what fraction are correct. Higher pass rate = stronger example.
+- **Reward models / LLM-as-judge:** A separate model scores each output. A/B comparison scoring tends to work better than absolute ratings.
+- **Manual review:** Read the output and assess whether it's higher quality.
+
+### Additional Benefits
+
+SDPO offers advantages such as:
+
+- [Faster training](https://x.com/jonashuebotter/status/2016950268462608665) (denser reward signal)
+- [Shorter reasoning traces](https://x.com/jonashuebotter/status/2016953855146107075) from better credit assignment ([related](https://x.com/jonashuebotter/status/2016954946390757476))
+- [Reduced forgetting](https://x.com/IdanShenfeld/status/2016818112004305302) when jumping between datasets
+
+### The Algorithm
+
+SDPO replaces GRPO's scalar reward loss with **token-level self-distillation** from a teacher model. On each batch:
 
 1. **Generate** multiple completions per prompt
 2. **Evaluate** with your reward function (scores + optional feedback)
@@ -87,7 +118,7 @@ trainer.train()
 
 ### SDPOConfig Reference
 
-Parameters match the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) reference (see [Known Limitations](#known-limitations) for gaps). Defaults are from the paper's experiment scripts.
+Parameters match the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) reference (see [Known Limitations](#known-limitations) for gaps). Defaults are from the paper's experiment scripts. See [docs/configuration.md](docs/configuration.md) for the full reference.
 
 ```python
 SDPOConfig(
@@ -200,7 +231,9 @@ The paper uses `alpha=0.5` (JSD) across its experiments. The [reference experime
 
 ## How It Works
 
-```
+See [docs/how-it-works.md](docs/how-it-works.md) for a deeper dive into the algorithm, architecture decisions, and numerical details.
+
+```text
                      ┌─────────────────────────────────────────┐
                      │  For each batch:                        │
                      │                                         │
@@ -231,7 +264,7 @@ The paper uses `alpha=0.5` (JSD) across its experiments. The [reference experime
 See `examples/` for complete, runnable scripts:
 
 | Example | Task | Key Feature |
-|---|---|---|
+| --- | --- | --- |
 | `basic_sdpo.py` | Math (addition) | Core SDPO loop with feedback |
 | `sdpo_lora_ema.py` | Math (multiplication) | LoRA EMA teacher mode (memory-efficient) |
 | `sdpo_with_unsloth.py` | Reasoning | Unsloth + QLoRA + 4-bit |
@@ -253,18 +286,19 @@ See [benchmark/README.md](benchmark/README.md) for full results and replication 
 ## Documentation
 
 | Document | What it covers |
-|---|---|
-| [VERIFICATION.md](VERIFICATION.md) | Line-by-line verification against verl reference |
-| [DEVIATIONS.md](DEVIATIONS.md) | Intentional differences from verl (TRL adaptation) |
-| [HANDOVER.md](HANDOVER.md) | Architecture decisions, gotchas, implementation guide |
-| [UNSLOTH_INTEGRATION.md](UNSLOTH_INTEGRATION.md) | Unsloth compatibility, import order, what works |
+| --- | --- |
+| [docs/configuration.md](docs/configuration.md) | Full SDPOConfig reference, training modes, reward functions |
+| [docs/how-it-works.md](docs/how-it-works.md) | Algorithm deep-dive, architecture decisions, numerical details |
+| [docs/unsloth.md](docs/unsloth.md) | Unsloth compatibility, import order, what works |
+| [docs/verification.md](docs/verification.md) | Line-by-line verification against verl reference |
+| [docs/deviations.md](docs/deviations.md) | Intentional differences from verl (TRL adaptation) |
 | [examples/README.md](examples/README.md) | Example walkthrough and customization guide |
 | [benchmark/README.md](benchmark/README.md) | MBPP benchmark methodology and results |
 
 ## GPU Requirements
 
 | Model Size | Standard EMA | LoRA EMA | Unsloth (4-bit) |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 0.5B | ~6 GB | ~4 GB | ~3.5 GB |
 | 7B | ~28 GB | ~14 GB | ~10 GB |
 | 14B | ~56 GB | ~30 GB | ~18 GB |

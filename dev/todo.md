@@ -1,5 +1,7 @@
 # TODO: README, Examples & Docs Refresh
 
+> **This is an internal development document.** For user-facing documentation, see [docs/](../docs/) and the [README](../README.md).
+
 This file tracks the full plan for updating documentation, examples, and
 onboarding materials after the Phase 1 bug fixes and Phase 2 lora_ema feature.
 
@@ -128,20 +130,20 @@ Changes needed:
 
 ### 5. Update stale docs
 
-#### 5a. VERIFICATION.md
-- [ ] Update test counts (115 → 133+)
+#### 5a. docs/verification.md
+- [ ] Update test counts (115 -> 133+)
 - [ ] Add lora_ema functions to teacher verification table
 - [ ] Add `apply_chat_template_kwargs` to config verification
 - [ ] Add `"lora_ema"` to teacher_mode values
 - [ ] Note the 3 bugs found and fixed
 
-#### 5b. DEVIATIONS.md
+#### 5b. docs/deviations.md
 - [ ] Update test count
 - [ ] Add `teacher_mode="lora_ema"` as novel extension (not in verl reference)
 - [ ] Add lora_ema as memory optimization strategy
 - [ ] Note `apply_chat_template_kwargs` as TRL-specific addition
 
-#### 5c. HANDOVER.md
+#### 5c. dev/handover.md
 - [ ] Update test counts (total and per-module)
 - [ ] Add 3 new bugs to bug history
 - [ ] Add new functions to file reference (teacher.py, reprompting.py)
@@ -149,7 +151,7 @@ Changes needed:
 - [ ] Add lora_ema architecture decision
 - [ ] Mention peft dependency
 
-#### 5d. UNSLOTH_INTEGRATION.md
+#### 5d. docs/unsloth.md
 - [ ] Add lora_ema + Unsloth interaction section
 - [ ] Update memory table with lora_ema option
 - [ ] Show `teacher_mode` in config examples
@@ -174,7 +176,7 @@ Changes needed:
 - `src/sdpo_rl/trainer.py` — Bug fixes + lora_ema init/compute_loss
 - `src/sdpo_rl/teacher.py` — lora_ema functions + constants
 - `src/sdpo_rl/__init__.py` — New exports
-- `pyproject.toml` — peft optional dep (needs → default dep)
+- `pyproject.toml` — peft optional dep (needs -> default dep)
 
 ### Test files:
 - `tests/test_config.py` — 20 tests
@@ -191,9 +193,9 @@ Changes needed:
 
 ### Docs to update:
 - `README.md` — Main onboarding doc
-- `VERIFICATION.md` — Line-by-line verification checklist
-- `DEVIATIONS.md` — Differences from verl reference
-- `HANDOVER.md` — Architecture decisions, file reference, gotchas
-- `UNSLOTH_INTEGRATION.md` — Unsloth compatibility guide
-- `SDPO_AUDIT.md` — Comprehensive audit (already up to date)
+- `docs/verification.md` — Line-by-line verification checklist
+- `docs/deviations.md` — Differences from verl reference
+- `dev/handover.md` — Architecture decisions, file reference, gotchas
+- `docs/unsloth.md` — Unsloth compatibility guide
+- `dev/audit.md` — Comprehensive audit (already up to date)
 - `examples/README.md` — Example walkthrough

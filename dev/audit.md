@@ -1,5 +1,7 @@
 # SDPO Implementation Audit & Change Plan
 
+> **This is an internal development document.** For user-facing verification details, see [docs/verification.md](../docs/verification.md).
+
 This document captures the results of a comprehensive audit comparing our TRL-based SDPO implementation against the reference implementation at `SDPO_reference/` (lasgroup/SDPO, arxiv:2601.20802).
 
 It serves as both a record of findings and a living tracker for fixes.
@@ -40,7 +42,7 @@ def _build_teacher_message(i: int) -> list[dict]:
 
 **Problem:** The current code wraps the entire teacher prompt in a single `{"role": "user"}` message, discarding any system messages from the original prompt. For datasets with system prompts (e.g., "You are a helpful assistant"), this changes the teacher's context. The reference preserves all messages except the last user message, replacing only the user turn with the reprompted version.
 
-**Impact:** Different teacher logits → different distillation signal → different training outcome.
+**Impact:** Different teacher logits -> different distillation signal -> different training outcome.
 
 **Root cause:** TRL's `_generate_and_score_completions` does not store the raw prompt messages in its output dict. Our override decodes `prompt_ids` back to text (line 181), losing the structured message format. We need to capture the raw messages.
 
@@ -101,7 +103,7 @@ teacher_prompt = self.tokenizer.apply_chat_template(
 ```python
 loss, metrics = compute_self_distillation_loss(
     ...
-    teacher_log_probs=None,  # ← Always None
+    teacher_log_probs=None,  # <- Always None
     ...
 )
 ```
@@ -110,7 +112,7 @@ loss, metrics = compute_self_distillation_loss(
 ```python
 pg_loss, pg_metrics = compute_self_distillation_loss(
     student_log_probs=log_prob,
-    teacher_log_probs=teacher_log_prob,  # ← Actual teacher per-token log-probs
+    teacher_log_probs=teacher_log_prob,  # <- Actual teacher per-token log-probs
     ...
 )
 ```
@@ -123,7 +125,7 @@ pg_loss, pg_metrics = compute_self_distillation_loss(
 
 ## 2. Verified Correct
 
-### Core Distillation Math ✅
+### Core Distillation Math
 
 The following were verified identical to the reference (max error 1.4e-08 across 200 steps per `test_reference_match.py`):
 
@@ -131,16 +133,16 @@ The following were verified identical to the reference (max error 1.4e-08 across
 |-----------|----------|----------|--------|
 | Top-K tail bucket (`add_tail`) | `distillation.py:24-49` | `core_algos.py:1112-1116` | **Identical** |
 | Top-K renormalization | `distillation.py:86-87` | `core_algos.py:1120-1122` | **Identical** |
-| Forward KL (α=0) | `distillation.py:89-91` | `core_algos.py:1139-1142` | **Identical** |
-| Reverse KL (α=1) | `distillation.py:92-94` | `core_algos.py:1143-1146` | **Identical** |
-| Generalized JSD (0<α<1) | `distillation.py:96-112` | `core_algos.py:1148-1161` | **Identical** |
+| Forward KL (alpha=0) | `distillation.py:89-91` | `core_algos.py:1139-1142` | **Identical** |
+| Reverse KL (alpha=1) | `distillation.py:92-94` | `core_algos.py:1143-1146` | **Identical** |
+| Generalized JSD (0<alpha<1) | `distillation.py:96-112` | `core_algos.py:1148-1161` | **Identical** |
 | KL sum over vocab dim | `distillation.py:115` | `core_algos.py:1163` | **Identical** |
 | IS correction formula | `distillation.py:147-149` | `core_algos.py:1173-1175` | **Identical** |
 | IS correction clamp values | `[-20, 20]`, `max=is_clip` | `[-20, 20]`, `max=is_clip` | **Identical** |
 | Mask application | `distillation.py:174-176` | `core_algos.py:1102-1104` | **Identical** |
 | Token-mean aggregation | `distillation.py:178-179` | `core_algos.py:1057-1060` | **Equivalent** (dp_size=1) |
 
-### Reprompting Logic ✅
+### Reprompting Logic
 
 | Component | Status |
 |-----------|--------|
@@ -151,7 +153,7 @@ The following were verified identical to the reference (max error 1.4e-08 across
 | `feedback_only_without_solution` logic | **Identical** |
 | `self_distillation_mask` formula | **Identical** |
 
-### Teacher Management ✅
+### Teacher Management
 
 | Component | Status |
 |-----------|--------|
@@ -160,7 +162,7 @@ The following were verified identical to the reference (max error 1.4e-08 across
 | `torch.no_grad()` for EMA update | **Correct** |
 | `is_floating_point()` filter for quantized params | **Correct extension** (ref doesn't handle LoRA) |
 
-### Forward Pass Alignment ✅
+### Forward Pass Alignment
 
 | Component | Status |
 |-----------|--------|
@@ -336,7 +338,7 @@ else:
 **EMA update (teacher.py):**
 ```python
 def ema_update_adapters(model, student_adapter, teacher_adapter, rate):
-    """EMA update only on adapter weights — no base model touching."""
+    """EMA update only on adapter weights -- no base model touching."""
     student_sd = model.get_adapter_state_dict(student_adapter)
     teacher_sd = model.get_adapter_state_dict(teacher_adapter)
     with torch.no_grad():
@@ -360,7 +362,7 @@ def ema_update_adapters(model, student_adapter, teacher_adapter, rate):
 - `init_lora_ema_teacher` copies student weights into teacher adapter, freezes teacher params, and leaves student ("default") active.
 - `ema_update_lora_adapters` iterates `module.lora_A[adapter]` / `module.lora_B[adapter]` directly — no state_dict overhead, in-place update with dtype handling.
 - `compute_loss` switches to teacher adapter with `model.set_adapter(LORA_EMA_TEACHER_ADAPTER)`, runs forward pass, then switches back to "default".
-- Teacher adapter weights are bf16 when created by PEFT (matching base model dtype). EMA update handles float32→bf16 conversion via `.to(dtype=teacher_p.dtype)`.
+- Teacher adapter weights are bf16 when created by PEFT (matching base model dtype). EMA update handles float32->bf16 conversion via `.to(dtype=teacher_p.dtype)`.
 - All 133 tests pass (24 teacher tests, 109 other non-GPU tests).
 
 ---
@@ -371,10 +373,10 @@ def ema_update_adapters(model, student_adapter, teacher_adapter, rate):
 
 | Teacher variant | Best Accuracy | Avg Accuracy |
 |---|---|---|
-| Current weights (no regularization) | 36.1% ± 1.6 | 29.8% ± 1.3 |
-| Frozen (initial checkpoint) | 48.8% ± 0.7 | 44.4% ± 0.2 |
-| Trust-region (α=0.01) | **50.6% ± 0.9** | **45.6% ± 0.2** |
-| EMA (α=0.01) | 49.3% ± 0.3 | 45.3% ± 0.2 |
+| Current weights (no regularization) | 36.1% +/- 1.6 | 29.8% +/- 1.3 |
+| Frozen (initial checkpoint) | 48.8% +/- 0.7 | 44.4% +/- 0.2 |
+| Trust-region (alpha=0.01) | **50.6% +/- 0.9** | **45.6% +/- 0.2** |
+| EMA (alpha=0.01) | 49.3% +/- 0.3 | 45.3% +/- 0.2 |
 
 The "current weights (no regularization)" baseline **diverges** even with context asymmetry present. EMA provides the stability needed for iterative self-improvement.
 
@@ -385,11 +387,11 @@ For QLoRA models:
 - Only LoRA adapter weights (float16/32) differ and receive EMA updates
 - `copy.deepcopy` wastefully duplicates the frozen base (~4GB for 7B)
 - Multi-adapter API shares the base and only duplicates adapter weights (~100-200MB)
-- **Same EMA quality, ~20× less extra memory**
+- **Same EMA quality, ~20x less extra memory**
 
 ### Key References
 
-- SDPO paper: arxiv:2601.20802 (Hübotter et al., 2026)
-- "How to Scale Your EMA" (Busbridge et al., NeurIPS 2023): `ρ̂ = ρ^κ`
+- SDPO paper: arxiv:2601.20802 (Hubotter et al., 2026)
+- "How to Scale Your EMA" (Busbridge et al., NeurIPS 2023)
 - PEFT multi-adapter API: `model.add_adapter()`, `model.set_adapter()`
 - Context distillation: Snell et al. (2024), Anthropic

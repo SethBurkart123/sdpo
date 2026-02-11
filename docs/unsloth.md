@@ -1,14 +1,10 @@
 # Unsloth Integration Guide
 
-This document explains how to use SDPO-RL with Unsloth optimizations.
-
-## Overview
-
-SDPO-RL is compatible with Unsloth's optimization framework. However, because SDPO requires custom implementations of `compute_loss` and `_generate_and_score_completions`, some (but not all) Unsloth optimizations will apply.
+SDPO-RL is compatible with [Unsloth](https://github.com/unslothai/unsloth). Because SDPO requires custom implementations of `compute_loss` and `_generate_and_score_completions`, some (but not all) Unsloth optimizations apply.
 
 ## What Works
 
-✅ **These Unsloth optimizations WILL apply to SDPO:**
+**These Unsloth optimizations apply to SDPO:**
 - Model loading optimizations (faster loading, smaller memory footprint)
 - Patched `__init__` (vLLM engine reuse, better default hyperparameters)
 - `unwrap_model_for_generation` (training/inference mode switching)
@@ -16,18 +12,18 @@ SDPO-RL is compatible with Unsloth's optimization framework. However, because SD
 - Mixed-precision auto-configuration
 - LoRA/QLoRA support from FastLanguageModel
 
-✅ **SDPO-specific optimizations:**
+**SDPO-specific optimizations:**
 - Top-K logit computation (only top-100 tokens computed)
 - Memory-efficient distillation (no full vocabulary materialization)
 - Lightweight EMA teacher (shared ref_model, not a third model)
 
 ## What Doesn't Apply
 
-❌ **These Unsloth optimizations are BYPASSED in SDPO mode:**
-- Chunked loss computation (`grpo_accumulated_loss`) - we compute SDPO loss directly
-- Triton kernel acceleration for loss computation - SDPO uses custom distillation formula
-- Left-padding alignment fixes - we handle padding in reprompting
-- vLLM sleep/wake memory management during generation - inherited but not utilized
+**These Unsloth optimizations are bypassed in SDPO mode:**
+- Chunked loss computation (`grpo_accumulated_loss`) — we compute SDPO loss directly
+- Triton kernel acceleration for loss computation — SDPO uses custom distillation formula
+- Left-padding alignment fixes — we handle padding in reprompting
+- vLLM sleep/wake memory management during generation — inherited but not utilized
 
 **Why?** SDPO overrides `compute_loss` and `_generate_and_score_completions` to implement the self-distillation algorithm. Python's method resolution order (MRO) means our overridden methods take precedence over Unsloth's patches.
 
@@ -36,7 +32,7 @@ SDPO-RL is compatible with Unsloth's optimization framework. However, because SD
 ### Step 1: Import Order is Critical
 
 ```python
-# ✅ CORRECT: Patch BEFORE any TRL imports
+# CORRECT: Patch BEFORE any TRL imports
 from unsloth import FastLanguageModel, PatchFastRL
 
 # Patch the GRPO trainer before importing SDPO
@@ -46,7 +42,7 @@ PatchFastRL("GRPO", FastLanguageModel)
 from sdpo_rl import SDPOTrainer, SDPOConfig
 from trl import GRPOConfig
 
-# ❌ WRONG: Importing SDPO before patching will use unpatched GRPOTrainer
+# WRONG: Importing SDPO before patching will use unpatched GRPOTrainer
 # from sdpo_rl import SDPOTrainer  # Don't do this first!
 # from unsloth import PatchFastRL
 # PatchFastRL("GRPO", ...)
@@ -137,16 +133,6 @@ print(f"prediction_step from: {type(trainer).prediction_step.__qualname__}")
 # Should show patched version if not overridden
 ```
 
-### Expected Output
-
-```
-🦥 Unsloth: Will patch GRPO trainer for Unsloth optimizations.
-Unsloth patches applied: True
-Has Unsloth attributes: True
-compute_loss from: SDPOTrainer.compute_loss
-prediction_step from: GRPOTrainer.prediction_step
-```
-
 ## Performance Characteristics
 
 ### Memory Usage
@@ -166,7 +152,7 @@ prediction_step from: GRPOTrainer.prediction_step
 - **Forward pass**: ~10-20% faster with Unsloth (quantization, flash attention)
 - **Loss computation**: Similar (SDPO uses custom loss, bypasses Unsloth's chunked loss)
 
-**Bottom line**: Unsloth provides significant memory savings (especially with QLoRA) and faster model loading, but SDPO's custom loss computation means we don't get the full 2x speedup of vanilla GRPO+Unsloth.
+**Bottom line**: Unsloth provides significant memory savings (especially with QLoRA) and faster model loading, but SDPO's custom loss computation means you don't get the full 2x speedup of vanilla GRPO+Unsloth.
 
 ## Advanced: Hybrid Optimization
 
@@ -297,7 +283,7 @@ trainer = SDPOTrainer(
 trainer.train()
 ```
 
-This should train a 7B model with SDPO on a 24GB GPU!
+This should train a 7B model with SDPO on a 24GB GPU.
 
 ## LoRA EMA + Unsloth
 
@@ -325,9 +311,9 @@ This combines Unsloth's QLoRA memory savings with LoRA EMA's shared-base-model a
 
 ## Summary
 
-✅ **Unsloth + SDPO** is a winning combination:
+**Unsloth + SDPO** is a strong combination:
 - Unsloth handles model optimization (memory, loading, quantization)
 - SDPO handles advanced RL (self-distillation, rich feedback)
 - Combined: Train larger models with better algorithms on consumer hardware
 
-📝 **Key takeaway**: While SDPO bypasses some Unsloth runtime optimizations due to custom loss computation, you still get significant memory savings from QLoRA and faster model loading. The combination enables training 7B+ models with SDPO on affordable GPUs.
+While SDPO bypasses some Unsloth runtime optimizations due to custom loss computation, you still get significant memory savings from QLoRA and faster model loading. The combination enables training 7B+ models with SDPO on affordable GPUs.

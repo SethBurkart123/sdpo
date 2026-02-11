@@ -307,7 +307,7 @@ class TestBuildTeacherMessages:
 
     Bug Fix 1: The original code wrapped everything in a single user message,
     dropping system messages. The reference preserves system messages from the
-    original prompt. See SDPO_AUDIT.md Bug 1.
+    original prompt. See dev/audit.md Bug 1.
     """
 
     def test_preserves_system_messages(self):
