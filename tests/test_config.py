@@ -77,3 +77,35 @@ class TestSDPOConfigValidation:
     def test_invalid_topk(self):
         with pytest.raises(ValueError, match="distillation_topk"):
             SDPOConfig(distillation_topk=0)
+
+    def test_lora_ema_teacher_mode_valid(self):
+        """lora_ema should be an accepted teacher_mode."""
+        cfg = SDPOConfig(teacher_mode="lora_ema")
+        assert cfg.teacher_mode == "lora_ema"
+
+
+class TestSDPOConfigChatTemplateKwargs:
+    """
+    Bug Fix 2: apply_chat_template_kwargs must be forwarded to the
+    tokenizer's apply_chat_template call. The reference passes
+    enable_thinking and continue_final_message explicitly.
+    See SDPO_AUDIT.md Bug 2.
+    """
+
+    def test_default_is_empty_dict(self):
+        cfg = SDPOConfig()
+        assert cfg.apply_chat_template_kwargs == {}
+
+    def test_custom_kwargs_stored(self):
+        cfg = SDPOConfig(apply_chat_template_kwargs={"enable_thinking": True})
+        assert cfg.apply_chat_template_kwargs["enable_thinking"] is True
+
+    def test_multiple_kwargs(self):
+        cfg = SDPOConfig(
+            apply_chat_template_kwargs={
+                "enable_thinking": False,
+                "continue_final_message": False,
+            }
+        )
+        assert cfg.apply_chat_template_kwargs["enable_thinking"] is False
+        assert cfg.apply_chat_template_kwargs["continue_final_message"] is False

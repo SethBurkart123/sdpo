@@ -295,6 +295,133 @@ class TestBuildTeacherPrompts:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# 4a. Teacher Message Construction (structured chat messages)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTeacherMessages:
+    """
+    Tests for build_teacher_messages — the function that constructs
+    properly structured chat message lists for the teacher prompt.
+
+    Bug Fix 1: The original code wrapped everything in a single user message,
+    dropping system messages. The reference preserves system messages from the
+    original prompt. See SDPO_AUDIT.md Bug 1.
+    """
+
+    def test_preserves_system_messages(self):
+        """System messages from the original prompt must be preserved."""
+        from sdpo_rl.reprompting import build_teacher_messages
+
+        original_messages = [
+            [
+                {"role": "system", "content": "You are a helpful math assistant."},
+                {"role": "user", "content": "What is 2+2?"},
+            ]
+        ]
+        teacher_prompt_texts = ["What is 2+2?\nCorrect solution:\n\n4\n\n\n\nCorrectly solve the original question.\n"]
+
+        result = build_teacher_messages(original_messages, teacher_prompt_texts)
+
+        assert len(result) == 1
+        messages = result[0]
+        # First message should be the system message
+        assert messages[0]["role"] == "system"
+        assert messages[0]["content"] == "You are a helpful math assistant."
+        # Last message should be the user message with the reprompted content
+        assert messages[-1]["role"] == "user"
+        assert "Correctly solve the original question." in messages[-1]["content"]
+
+    def test_no_system_message(self):
+        """When there's no system message, only the user message is returned."""
+        from sdpo_rl.reprompting import build_teacher_messages
+
+        original_messages = [[{"role": "user", "content": "What is 2+2?"}]]
+        teacher_prompt_texts = ["What is 2+2?\n\nCorrectly solve the original question.\n"]
+
+        result = build_teacher_messages(original_messages, teacher_prompt_texts)
+
+        assert len(result) == 1
+        messages = result[0]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+
+    def test_multiple_system_messages(self):
+        """Multiple system/context messages should all be preserved."""
+        from sdpo_rl.reprompting import build_teacher_messages
+
+        original_messages = [
+            [
+                {"role": "system", "content": "You are a coder."},
+                {"role": "user", "content": "Write hello world."},
+                {"role": "assistant", "content": "print('hello')"},
+                {"role": "user", "content": "Now write goodbye."},
+            ]
+        ]
+        teacher_prompt_texts = ["Now write goodbye.\n\nCorrectly solve the original question.\n"]
+
+        result = build_teacher_messages(original_messages, teacher_prompt_texts)
+
+        messages = result[0]
+        # All messages except the last user turn should be preserved
+        assert len(messages) == 4  # system + user + assistant + new_user
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert messages[2]["role"] == "assistant"
+        assert messages[3]["role"] == "user"
+        assert "Correctly solve the original question." in messages[3]["content"]
+
+    def test_batch_processing(self):
+        """Should handle a batch of messages correctly."""
+        from sdpo_rl.reprompting import build_teacher_messages
+
+        original_messages = [
+            [
+                {"role": "system", "content": "System A"},
+                {"role": "user", "content": "Question A"},
+            ],
+            [
+                {"role": "user", "content": "Question B"},  # no system msg
+            ],
+        ]
+        teacher_prompt_texts = ["Reprompted A", "Reprompted B"]
+
+        result = build_teacher_messages(original_messages, teacher_prompt_texts)
+
+        assert len(result) == 2
+        # First sample has system message
+        assert result[0][0]["role"] == "system"
+        assert result[0][1]["role"] == "user"
+        assert result[0][1]["content"] == "Reprompted A"
+        # Second sample has no system message
+        assert len(result[1]) == 1
+        assert result[1][0]["role"] == "user"
+        assert result[1][0]["content"] == "Reprompted B"
+
+    def test_plain_string_prompts_treated_as_user_message(self):
+        """When original_messages contains plain strings, treat as single user message."""
+        from sdpo_rl.reprompting import build_teacher_messages
+
+        original_messages = [
+            "What is 2+2?",  # plain string, not a message list
+        ]
+        teacher_prompt_texts = ["Reprompted text"]
+
+        result = build_teacher_messages(original_messages, teacher_prompt_texts)
+
+        assert len(result) == 1
+        messages = result[0]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        assert messages[0]["content"] == "Reprompted text"
+
+
+# ---------------------------------------------------------------------------
+# 4b. Self-Distillation Mask Construction
+# ---------------------------------------------------------------------------
+
+
 class TestSelfDistillationMaskConstruction:
     def test_mask_reflects_teacher_availability(self, rollout_data):
         """Mask should be 1 where solution OR feedback exists, 0 otherwise."""

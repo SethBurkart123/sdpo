@@ -149,6 +149,49 @@ def build_teacher_prompts(
     return results
 
 
+def build_teacher_messages(
+    original_messages: list,
+    teacher_prompt_texts: list[str],
+) -> list[list[dict]]:
+    """
+    Build structured chat message lists for the teacher prompt.
+
+    Matches verl's _build_teacher_message which preserves system messages
+    from the original prompt and only replaces the final user turn with
+    the reprompted content.
+
+    Reference: SDPO_reference/verl/trainer/ppo/ray_trainer.py:710-744
+        system_messages = raw_prompt[i][:-1]
+        return system_messages + [{"role": "user", "content": reprompt_text}]
+
+    Args:
+        original_messages: The raw prompt messages for each sample. Each
+            element is either a list of message dicts (conversational) or
+            a plain string.
+        teacher_prompt_texts: The reprompted teacher prompt text for each
+            sample (output of build_teacher_prompts).
+
+    Returns:
+        List of chat message lists, one per sample. Each message list
+        preserves all system/context messages from the original prompt
+        with the final user turn replaced by the teacher prompt text.
+    """
+    results = []
+    for i in range(len(original_messages)):
+        orig = original_messages[i]
+        teacher_text = teacher_prompt_texts[i]
+
+        if isinstance(orig, list) and len(orig) > 0 and isinstance(orig[0], dict):
+            # Conversational format: preserve all messages except last user turn
+            system_messages = orig[:-1]
+            results.append(system_messages + [{"role": "user", "content": teacher_text}])
+        else:
+            # Plain string: wrap as single user message
+            results.append([{"role": "user", "content": teacher_text}])
+
+    return results
+
+
 def compute_self_distillation_mask(
     solutions: list[str | None],
     feedback_list: list[str | None],

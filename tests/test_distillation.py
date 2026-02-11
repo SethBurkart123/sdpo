@@ -492,3 +492,43 @@ class TestComputeSelfDistillationLoss:
             add_tail=False,
         )
         assert loss.item() < 1e-5, f"Expected ~0 loss for identical distributions, got {loss.item()}"
+
+    def test_fallback_path_with_teacher_log_probs(self, small_log_probs, response_mask):
+        """
+        Bug Fix 3: When topk log-probs are None (non-full-logit mode), the
+        fallback path uses REINFORCE-style reverse KL which requires
+        teacher_log_probs to be non-None. The reference always passes
+        teacher per-token log-probs. See SDPO_AUDIT.md Bug 3.
+        """
+        student_lp, teacher_lp = small_log_probs
+        # Use per-token log-probs (as if gathered at the completion token)
+        student_per_token = student_lp[:, :, 0]
+        teacher_per_token = teacher_lp[:, :, 0]
+
+        # The fallback path: no topk, use per-token log-probs
+        loss, metrics = compute_self_distillation_loss(
+            student_log_probs=student_per_token,
+            teacher_log_probs=teacher_per_token,  # Must NOT be None
+            response_mask=response_mask,
+            student_topk_log_probs=None,
+            teacher_topk_log_probs=None,
+            alpha=1.0,  # reverse KL for fallback
+            is_clip=None,
+        )
+        assert loss.dim() == 0, "Loss should be scalar"
+        assert torch.isfinite(loss), f"Loss not finite: {loss}"
+
+    def test_fallback_path_none_teacher_raises(self, small_log_probs, response_mask):
+        """When topk is None and teacher_log_probs is also None, it must error."""
+        student_lp, _ = small_log_probs
+        student_per_token = student_lp[:, :, 0]
+
+        with pytest.raises((TypeError, RuntimeError)):
+            compute_self_distillation_loss(
+                student_log_probs=student_per_token,
+                teacher_log_probs=None,
+                response_mask=response_mask,
+                student_topk_log_probs=None,
+                teacher_topk_log_probs=None,
+                alpha=1.0,
+            )

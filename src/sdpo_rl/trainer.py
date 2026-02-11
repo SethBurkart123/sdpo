@@ -26,6 +26,7 @@ from trl import GRPOConfig, GRPOTrainer
 from sdpo_rl.config import SDPOConfig
 from sdpo_rl.distillation import compute_self_distillation_loss
 from sdpo_rl.reprompting import (
+    build_teacher_messages,
     build_teacher_prompts,
     compute_self_distillation_mask,
     select_demonstration,
@@ -140,13 +141,23 @@ class SDPOTrainer(GRPOTrainer):
         Generate completions and prepare teacher prompt data.
 
         Overrides GRPOTrainer to:
-        1. Capture raw rewards before advantage normalization.
-        2. Group rollouts by prompt via RepeatSampler structure.
-        3. Select demonstrations from successful peers.
-        4. Build and tokenize teacher prompts with apply_chat_template.
-        5. Concatenate teacher prompts with response tokens.
-        6. Compute self_distillation_mask.
+        1. Capture raw prompt messages (before super consumes them).
+        2. Capture raw rewards before advantage normalization.
+        3. Group rollouts by prompt via RepeatSampler structure.
+        4. Select demonstrations from successful peers.
+        5. Build structured teacher messages preserving system prompts.
+        6. Tokenize teacher prompts with apply_chat_template.
+        7. Concatenate teacher prompts with response tokens.
+        8. Compute self_distillation_mask.
         """
+        # Capture raw prompt messages BEFORE super() consumes inputs.
+        # inputs is list[dict] where each dict has "prompt" containing the
+        # original chat message list (or plain string). We need these to
+        # preserve system messages in teacher prompts per the reference:
+        # SDPO_reference/verl/trainer/ppo/ray_trainer.py:711
+        #   system_messages = raw_prompt[i][:-1]
+        self._last_raw_prompts = [x["prompt"] for x in inputs]
+
         outputs = super()._generate_and_score_completions(inputs)
 
         completion_ids = outputs["completion_ids"]
@@ -214,22 +225,46 @@ class SDPOTrainer(GRPOTrainer):
             feedback_template=self.sdpo_config.feedback_template,
         )
 
-        # --- Tokenize teacher prompts ---
-        # In verl, this uses tokenizer.apply_chat_template with proper chat formatting.
-        # We wrap each teacher prompt as a user message and apply the chat template.
-        teacher_messages = [[{"role": "user", "content": tp}] for tp in teacher_prompts_list]
+        # --- Build structured teacher messages preserving system prompts ---
+        # The reference (ray_trainer.py:710-744) preserves system messages from
+        # the original prompt and only replaces the final user turn. Our previous
+        # code wrapped everything in a single user message — Bug 1 in SDPO_AUDIT.md.
+        #
+        # RepeatSampler repeats each prompt G times, so raw_prompts has batch_size
+        # entries where each group of G shares the same prompt messages.
+        raw_prompts = getattr(self, "_last_raw_prompts", None)
+        if raw_prompts is not None:
+            # RepeatSampler: raw_prompts has len(inputs) entries (before repeat),
+            # but batch_size = len(inputs) * G after repeat. Expand to match.
+            if len(raw_prompts) < batch_size:
+                expanded = []
+                for p in raw_prompts:
+                    expanded.extend([p] * G)
+                raw_prompts = expanded
+            teacher_messages = build_teacher_messages(raw_prompts, teacher_prompts_list)
+        else:
+            # Fallback: no raw prompts available, use single-user-message wrapping
+            logger.warning("_last_raw_prompts not available — teacher prompts will lack system messages")
+            teacher_messages = [[{"role": "user", "content": tp}] for tp in teacher_prompts_list]
 
-        # Try apply_chat_template first (matches verl), fall back to raw tokenization
+        # --- Tokenize teacher prompts ---
+        # Matches verl: apply_chat_template with continue_final_message=False and
+        # enable_thinking if configured. See SDPO_AUDIT.md Bug 2.
+        chat_template_kwargs = {
+            "tokenize": True,
+            "return_tensors": "pt",
+            "return_dict": True,
+            "continue_final_message": False,
+            "add_generation_prompt": True,
+            "padding": True,
+            "truncation": True,
+            "max_length": self.sdpo_config.max_reprompt_length,
+            **self.sdpo_config.apply_chat_template_kwargs,
+        }
         try:
             tokenized = self.processing_class.apply_chat_template(
                 teacher_messages,
-                tokenize=True,
-                return_tensors="pt",
-                return_dict=True,
-                add_generation_prompt=True,
-                padding=True,
-                truncation=True,
-                max_length=self.sdpo_config.max_reprompt_length,
+                **chat_template_kwargs,
             )
             teacher_prompt_ids = tokenized["input_ids"].to(self.accelerator.device)
             teacher_prompt_mask = tokenized["attention_mask"].to(self.accelerator.device)
@@ -337,12 +372,19 @@ class SDPOTrainer(GRPOTrainer):
             # Gather teacher log probs at STUDENT's top-K indices (critical)
             teacher_topk_log_probs = torch.gather(teacher_log_probs_full, dim=-1, index=student_topk_indices)
 
+            # Per-token teacher log-probs on the actual completion tokens.
+            # The reference always passes these — needed for IS correction
+            # fallback and for the non-full-logit distillation path.
+            teacher_per_token_logps = torch.gather(
+                teacher_log_probs_full, dim=-1, index=completion_ids.unsqueeze(-1)
+            ).squeeze(-1)
+
         # --- Compute SDPO loss ---
         loss, metrics = compute_self_distillation_loss(
             student_topk_log_probs=student_topk_log_probs,
             teacher_topk_log_probs=teacher_topk_log_probs,
             student_log_probs=student_per_token_logps,
-            teacher_log_probs=None,
+            teacher_log_probs=teacher_per_token_logps,
             response_mask=completion_mask,
             self_distillation_mask=self_distillation_mask,
             old_log_probs=old_per_token_logps,

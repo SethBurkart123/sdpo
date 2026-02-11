@@ -81,6 +81,11 @@ class SDPOConfig:
     max_reprompt_length: int = 10240
     reprompt_truncation: str = "right"
 
+    # --- Chat template ---
+    # Extra kwargs forwarded to tokenizer.apply_chat_template() when
+    # building the teacher prompt (e.g. enable_thinking=True for R1 models).
+    apply_chat_template_kwargs: dict = field(default_factory=dict)
+
     # --- Templates ---
     reprompt_template: str = DEFAULT_REPROMPT_TEMPLATE
     solution_template: str = DEFAULT_SOLUTION_TEMPLATE
@@ -89,8 +94,10 @@ class SDPOConfig:
     def __post_init__(self):
         if not 0.0 <= self.alpha <= 1.0:
             raise ValueError(f"alpha must be in [0, 1], got {self.alpha}")
-        if self.teacher_mode not in ("ema", "trust_region", "frozen"):
-            raise ValueError(f"teacher_mode must be 'ema', 'trust_region', or 'frozen', got '{self.teacher_mode}'")
+        if self.teacher_mode not in ("ema", "trust_region", "frozen", "lora_ema"):
+            raise ValueError(
+                f"teacher_mode must be 'ema', 'trust_region', 'frozen', or 'lora_ema', got '{self.teacher_mode}'"
+            )
         if self.reprompt_truncation not in ("left", "right", "error"):
             raise ValueError(
                 f"reprompt_truncation must be 'left', 'right', or 'error', got '{self.reprompt_truncation}'"
