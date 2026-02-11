@@ -29,6 +29,8 @@ This document verifies that our SDPO implementation faithfully matches the refer
 | **num_iterations alignment** | fires at step % num_iterations == 0 | should_update() check | ✅ |
 | **Two models (not three)** | Policy + EMA teacher | ref_model repurposed as teacher | ✅ |
 | **No gradient through teacher** | torch.no_grad() | with torch.no_grad() in compute_loss | ✅ |
+| **LoRA EMA mode** | N/A (novel extension) | init_lora_ema_teacher() + LoraEMATeacherCallback | ✅ |
+| **LoRA adapter EMA update** | N/A (novel extension) | ema_update_lora_adapters() — shared base model | ✅ |
 
 ### 3. Reprompting (verl/trainer/ppo/ray_trainer.py)
 
@@ -56,7 +58,8 @@ This document verifies that our SDPO implementation faithfully matches the refer
 | `dont_reprompt_on_self_success` | True | True (explicit) | True | ✅ |
 | `remove_thinking_from_demonstration` | True | True (explicit) | True | ✅ |
 | `include_environment_feedback` | True | True (explicit) | True | ✅ |
-| `teacher_mode` | ema | ema | ema | ✅ |
+| `teacher_mode` | ema | ema | ema (also: frozen, lora_ema) | ✅ |
+| `apply_chat_template_kwargs` | N/A | N/A | {} (TRL-specific addition) | ✅ |
 
 ## ✅ Critical Implementation Details
 
@@ -82,9 +85,9 @@ def compute_loss(self, model, inputs, ...):
 
 **Reference**: 2-3 models in memory (policy + teacher, with rollout model optionally sharing weights)
 
-**Our Implementation**: 2 models (policy + ref_model repurposed as teacher)
+**Our Implementation**: 2 models (policy + ref_model repurposed as teacher). With `teacher_mode="lora_ema"`, both are the SAME model with two LoRA adapters — no deepcopy needed.
 
-✅ **Status**: Matches reference architecture.
+✅ **Status**: Matches reference architecture. LoRA EMA is a novel memory optimization.
 
 ### Numerical Stability
 
@@ -106,12 +109,12 @@ def compute_loss(self, model, inputs, ...):
 
 ## ✅ Test Coverage
 
-### Unit Tests (105 tests)
+### Unit Tests (123 tests)
 
-- ✅ Distillation module: 27 tests covering top-K KL, tail bucket, JSD, IS correction
-- ✅ Reprompting module: 19 tests covering templates, demo selection, thinking tags
-- ✅ Teacher module: 7 tests covering EMA updates and callback timing
-- ✅ Config module: 16 tests covering validation and defaults
+- ✅ Distillation module: 29 tests covering top-K KL, tail bucket, JSD, IS correction
+- ✅ Reprompting module: 24 tests covering templates, demo selection, thinking tags, build_teacher_messages
+- ✅ Teacher module: 24 tests covering EMA updates, callback timing, and lora_ema (init, collect pairs, adapter EMA, callback)
+- ✅ Config module: 20 tests covering validation, defaults, apply_chat_template_kwargs, lora_ema mode
 - ✅ Reference match: 34 tests verifying numerical parity with verl reference
 - ✅ Unsloth integration: 2 tests verifying compatibility
 
@@ -128,7 +131,22 @@ def compute_loss(self, model, inputs, ...):
 9. ✅ Training loop completes 10 steps
 10. ✅ Loss behaves reasonably over training
 
-**Total: 115/115 tests passing** ✅
+### GPU Example Smoke Tests (4 tests)
+
+- ✅ basic_sdpo.py — runs to completion
+- ✅ sdpo_lora_ema.py — runs to completion (lora_ema mode)
+- ✅ sdpo_rich_feedback.py — runs to completion
+- ✅ sdpo_with_unsloth.py — runs to completion
+
+**Total: 137 non-GPU + 4 GPU example tests passing** ✅
+
+### Bugs Found and Fixed
+
+Three bugs were discovered during the Phase 1 reference audit:
+
+1. **Bug 1 (CRITICAL):** Teacher prompts did not preserve system messages. Fixed via `build_teacher_messages()` in `reprompting.py`.
+2. **Bug 2 (MODERATE):** `apply_chat_template_kwargs` was missing from `SDPOConfig`, preventing custom chat template args. Fixed by adding the field and forwarding to `apply_chat_template`.
+3. **Bug 3 (MINOR):** `teacher_per_token_logps` was not computed. Fixed via `torch.gather` in `compute_loss`.
 
 ## ✅ Key Differences from Reference
 
@@ -180,7 +198,7 @@ def compute_loss(self, model, inputs, ...):
 
 ### Test Coverage: ✅ COMPREHENSIVE
 
-- 115 tests covering all components
+- 137+ tests covering all components
 - Unit tests verify mathematical correctness
 - E2E tests verify integration with real models
 - All tests passing on GPU
@@ -199,7 +217,7 @@ def compute_loss(self, model, inputs, ...):
 
 **Verification #3 (Integration)**: ✅ PASS
 - Successfully trains real model (Qwen 0.5B)
-- All 115 tests passing
+- All 137+ tests passing
 - E2E training loop completes successfully
 - EMA teacher updates correctly
 

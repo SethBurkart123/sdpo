@@ -123,11 +123,12 @@ Our implementation is a **faithful reimplementation** of the SDPO algorithm adap
 - Tested with verl's full RL pipeline
 
 ### Our Implementation (TRL)
-- 115 comprehensive tests (105 unit + 10 e2e)
+- 137+ comprehensive tests (123 unit + 10 e2e + 4 GPU example smoke tests)
 - Tests verify:
   - Mathematical correctness (all formulas)
   - Integration with TRL
   - Real model training (Qwen 0.5B on GPU)
+  - LoRA EMA adapter operations (init, collect pairs, EMA update, callback)
 - Higher test coverage than reference
 
 **Impact**: More thorough testing of core algorithms in isolation.
@@ -143,8 +144,19 @@ Our implementation is a **faithful reimplementation** of the SDPO algorithm adap
 - Standard PyTorch memory management
 - Optional Unsloth integration for optimization
 - Top-K logits reduce memory usage intrinsically
+- **LoRA EMA mode** (`teacher_mode="lora_ema"`): novel extension not in the reference. Maintains student and teacher as two LoRA adapters on a shared base model, avoiding a full deepcopy. Saves ~3-4 GB for 7B QLoRA models.
 
-**Impact**: Different optimization strategies but similar memory footprint for core SDPO computation.
+**Impact**: Different optimization strategies but similar memory footprint for core SDPO computation. LoRA EMA provides additional savings for PEFT users.
+
+## 10.5. Chat Template Configuration
+
+### Reference (verl)
+- N/A (verl handles tokenization differently)
+
+### Our Implementation (TRL)
+- `SDPOConfig.apply_chat_template_kwargs` allows passing extra keyword arguments to `tokenizer.apply_chat_template()` during teacher prompt tokenization. This is a TRL-specific addition to support models with non-standard chat template requirements.
+
+**Impact**: Purely additive — does not change core algorithm behavior.
 
 ## 10. Model Loading
 
@@ -173,7 +185,7 @@ The following are **identical** to the reference:
 ✅ Self-distillation mask computation
 ✅ Zero-coverage handling
 ✅ Numerical stability measures (clamping, etc.)
-✅ Teacher management (2 models, not 3)
+✅ Teacher management (2 models, not 3; or 1 model with 2 adapters in lora_ema mode)
 ✅ Loss replacement behavior (SDPO replaces GRPO entirely)
 
 ---

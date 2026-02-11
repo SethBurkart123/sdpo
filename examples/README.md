@@ -8,6 +8,7 @@ Runnable examples demonstrating SDPO training for different tasks and configurat
 pip install sdpo-rl transformers datasets
 
 python examples/basic_sdpo.py            # Math (addition)
+python examples/sdpo_lora_ema.py         # Math (multiplication) with LoRA EMA teacher
 python examples/sdpo_with_unsloth.py     # Reasoning with Unsloth + QLoRA
 python examples/sdpo_rich_feedback.py    # Code generation with test feedback
 ```
@@ -23,7 +24,16 @@ Trains on simple math problems. Demonstrates the core loop: generate completions
 - EMA teacher updates
 - ~5 minutes on RTX 3080
 
-### 2. `sdpo_with_unsloth.py` -- Unsloth + QLoRA
+### 2. `sdpo_lora_ema.py` -- LoRA EMA Teacher Mode
+
+Memory-efficient mode for PEFT/LoRA models. Instead of deepcopying the entire model for the teacher, the trainer creates a second LoRA adapter ("sdpo_teacher") on the same base model. EMA updates only touch adapter weights.
+
+- Plain HF PEFT (not Unsloth)
+- `teacher_mode="lora_ema"` in SDPOConfig
+- Shared base model — no deepcopy, ~3-4 GB savings for 7B
+- ~2 minutes on RTX 3080
+
+### 3. `sdpo_with_unsloth.py` -- Unsloth + QLoRA
 
 Same idea, but with Unsloth for 2x faster training and 60% less memory. Shows the critical import order:
 
@@ -38,7 +48,7 @@ from sdpo_rl import SDPOTrainer, SDPOConfig  # Import SECOND
 - Thinking tag removal from demonstrations
 - ~3 minutes on RTX 3080
 
-### 3. `sdpo_rich_feedback.py` -- Code Generation with Test Feedback
+### 4. `sdpo_rich_feedback.py` -- Code Generation with Test Feedback
 
 SDPO's killer feature: learning from detailed error messages. The reward function executes test cases and returns specific failure info ("input=[1,2,3]: expected 6, got 0"). SDPO injects these into teacher prompts so the model learns what went wrong.
 
@@ -76,7 +86,7 @@ sdpo_config = SDPOConfig(
     enabled=True,                              # SDPO replaces GRPO loss
     alpha=0.5,                                 # JSD (symmetric). Paper default.
     distillation_topk=100,                     # Top-100 logits
-    teacher_mode="ema",                        # EMA teacher
+    teacher_mode="ema",                        # EMA teacher (or "lora_ema" for PEFT models)
     teacher_update_rate=0.05,                  # teacher = 0.95*teacher + 0.05*student
     is_clip=2.0,                               # IS ratio clamp
     include_environment_feedback=True,         # Use feedback in teacher prompts
@@ -114,6 +124,7 @@ A plain function returning `list[float]` also works if you don't need feedback.
 | Example | Min VRAM | With Unsloth |
 |---|---|---|
 | basic_sdpo.py | ~6 GB | -- |
+| sdpo_lora_ema.py | ~4 GB | -- |
 | sdpo_with_unsloth.py | -- | ~3.5 GB |
 | sdpo_rich_feedback.py | ~6 GB | -- |
 

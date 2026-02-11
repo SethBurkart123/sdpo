@@ -7,7 +7,6 @@
 
 A faithful reimplementation of SDPO ([arxiv:2601.20802](https://arxiv.org/abs/2601.20802)) from the [lasgroup/SDPO](https://github.com/lasgroup/SDPO) verl fork, ported to the Hugging Face TRL ecosystem as a drop-in `GRPOTrainer` subclass.
 
-[![Tests](https://img.shields.io/badge/tests-218%20passing-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.10+-blue)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)]()
 
@@ -105,8 +104,11 @@ SDPOConfig(
     is_clip=2.0,                               # Clamp IS ratio. None disables correction.
 
     # --- Teacher ---
-    teacher_mode="ema",                        # "ema" or "frozen" (trust_region declared but not yet implemented)
+    teacher_mode="ema",                        # "ema", "frozen", or "lora_ema" (trust_region not yet implemented)
     teacher_update_rate=0.05,                  # EMA rate: teacher = (1-rate)*teacher + rate*student
+
+    # --- Chat template ---
+    apply_chat_template_kwargs={},             # Extra kwargs for tokenizer.apply_chat_template()
 
     # --- Demonstration selection ---
     success_reward_threshold=1.0,              # Min reward for a rollout to be a "successful" demo
@@ -178,6 +180,14 @@ sdpo_config = SDPOConfig(enabled=False)
 sdpo_config = SDPOConfig(teacher_mode="frozen")
 ```
 
+**LoRA EMA teacher:** Memory-efficient mode for PEFT/LoRA models. Keeps student and teacher as two LoRA adapters on a shared base model instead of deepcopying the entire model. Saves ~3-4 GB for 7B QLoRA.
+```python
+from peft import LoraConfig, get_peft_model
+
+model = get_peft_model(base_model, LoraConfig(r=16, ...))
+sdpo_config = SDPOConfig(teacher_mode="lora_ema")
+```
+
 ### KL Divergence Variants
 
 ```python
@@ -223,6 +233,7 @@ See `examples/` for complete, runnable scripts:
 | Example | Task | Key Feature |
 |---|---|---|
 | `basic_sdpo.py` | Math (addition) | Core SDPO loop with feedback |
+| `sdpo_lora_ema.py` | Math (multiplication) | LoRA EMA teacher mode (memory-efficient) |
 | `sdpo_with_unsloth.py` | Reasoning | Unsloth + QLoRA + 4-bit |
 | `sdpo_rich_feedback.py` | Code generation | Test execution with error messages |
 
@@ -252,11 +263,11 @@ See [benchmark/README.md](benchmark/README.md) for full results and replication 
 
 ## GPU Requirements
 
-| Model Size | Without Unsloth | With Unsloth (4-bit) |
-|---|---|---|
-| 0.5B | ~6 GB | ~3.5 GB |
-| 7B | ~28 GB | ~10 GB |
-| 14B | ~56 GB | ~18 GB |
+| Model Size | Standard EMA | LoRA EMA | Unsloth (4-bit) |
+|---|---|---|---|
+| 0.5B | ~6 GB | ~4 GB | ~3.5 GB |
+| 7B | ~28 GB | ~14 GB | ~10 GB |
+| 14B | ~56 GB | ~30 GB | ~18 GB |
 
 ## Known Limitations
 

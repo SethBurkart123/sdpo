@@ -151,11 +151,11 @@ prediction_step from: GRPOTrainer.prediction_step
 
 ### Memory Usage
 
-| Component | SDPO (no Unsloth) | SDPO + Unsloth | SDPO + Unsloth + QLoRA |
-|-----------|-------------------|----------------|------------------------|
-| 7B model | ~28 GB | ~24 GB | ~12 GB |
-| With teacher | +14 GB | +12 GB | +3 GB |
-| **Total** | **~42 GB** | **~36 GB** | **~15 GB** |
+| Component | SDPO (no Unsloth) | SDPO + Unsloth | SDPO + Unsloth + QLoRA | + LoRA EMA |
+|-----------|-------------------|----------------|------------------------|------------|
+| 7B model | ~28 GB | ~24 GB | ~12 GB | ~12 GB |
+| With teacher | +14 GB | +12 GB | +3 GB | ~0 GB (shared base) |
+| **Total** | **~42 GB** | **~36 GB** | **~15 GB** | **~12 GB** |
 
 *Estimates for bf16 precision*
 
@@ -298,6 +298,30 @@ trainer.train()
 ```
 
 This should train a 7B model with SDPO on a 24GB GPU!
+
+## LoRA EMA + Unsloth
+
+The `teacher_mode="lora_ema"` mode is compatible with Unsloth-loaded models. When using Unsloth's `FastLanguageModel.get_peft_model()`, the model already has LoRA adapters. The trainer will add a second "sdpo_teacher" adapter automatically.
+
+```python
+from unsloth import FastLanguageModel, PatchFastRL
+PatchFastRL("GRPO", FastLanguageModel)
+
+from sdpo_rl import SDPOTrainer, SDPOConfig
+
+model, tokenizer = FastLanguageModel.from_pretrained(
+    "Qwen/Qwen2.5-7B-Instruct", load_in_4bit=True
+)
+model = FastLanguageModel.get_peft_model(model, r=16, ...)
+
+sdpo_config = SDPOConfig(
+    teacher_mode="lora_ema",  # Uses adapter EMA instead of deepcopy
+)
+```
+
+This combines Unsloth's QLoRA memory savings with LoRA EMA's shared-base-model approach for maximum memory efficiency. The teacher adapter is frozen and EMA-updated in place — no third model or deepcopy needed.
+
+**Note:** For Unsloth models, the standard `teacher_mode="ema"` already works (deepcopy only duplicates the small adapter + quantized base). LoRA EMA provides additional savings by avoiding the base model duplication entirely.
 
 ## Summary
 

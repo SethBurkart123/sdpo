@@ -42,6 +42,8 @@ def create_reasoning_dataset(num_samples: int = 50) -> Dataset:
 class ReasoningReward:
     """Reward function that checks reasoning answers and provides feedback."""
 
+    __name__ = "reasoning_reward"
+
     def __init__(self):
         self.last_feedback: list[str] = []
 
@@ -50,10 +52,13 @@ class ReasoningReward:
         self.last_feedback = []
 
         for completion, expected_even in zip(completions, is_even):
+            # TRL passes completions as [{"role": "assistant", "content": "..."}]
+            # for conversational datasets. Extract the text.
+            text = completion[0]["content"] if isinstance(completion, list) else completion
             expected = "YES" if expected_even else "NO"
 
             # Extract answer after thinking block if present
-            answer_part = completion.split("</think>")[-1].strip() if "</think>" in completion else completion.strip()
+            answer_part = text.split("</think>")[-1].strip() if "</think>" in text else text.strip()
             answer = "YES" if "YES" in answer_part.upper() else "NO" if "NO" in answer_part.upper() else "INVALID"
 
             if answer == expected:

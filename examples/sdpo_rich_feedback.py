@@ -12,6 +12,8 @@ Usage:
 Expected runtime: ~5 minutes on RTX 3080 (10GB)
 """
 
+import json
+
 import torch
 from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -21,7 +23,11 @@ from sdpo_rl import SDPOConfig, SDPOTrainer
 
 
 def create_code_dataset(num_samples: int = 40) -> Dataset:
-    """Simple Python function-writing tasks with test cases."""
+    """Simple Python function-writing tasks with test cases.
+
+    Test cases are serialized as JSON strings because PyArrow can't handle
+    mixed-shape nested structures (lists vs tuples vs scalars).
+    """
     tasks = []
 
     for i in range(10):
@@ -33,7 +39,8 @@ def create_code_dataset(num_samples: int = 40) -> Dataset:
                         "content": "Write a Python function `sum_list(lst)` that returns the sum of all numbers in a list.",
                     }
                 ],
-                "test_cases": [([1, 2, 3], 6), ([10, -5, 3], 8), ([], 0)],
+                # Each test case: [args_list, expected] — function is called as func(*args)
+                "test_cases_json": json.dumps([[[[1, 2, 3]], 6], [[[10, -5, 3]], 8], [[[]], 0]]),
             }
         )
 
@@ -46,7 +53,7 @@ def create_code_dataset(num_samples: int = 40) -> Dataset:
                         "content": "Write a Python function `reverse_string(s)` that returns the string reversed.",
                     }
                 ],
-                "test_cases": [("hello", "olleh"), ("abc", "cba"), ("", "")],
+                "test_cases_json": json.dumps([[["hello"], "olleh"], [["abc"], "cba"], [[""], ""]]),
             }
         )
 
@@ -59,7 +66,7 @@ def create_code_dataset(num_samples: int = 40) -> Dataset:
                         "content": "Write a Python function `max_of_three(a, b, c)` that returns the largest of three numbers.",
                     }
                 ],
-                "test_cases": [((1, 2, 3), 3), ((5, 2, 8), 8), ((-1, -5, -2), -1)],
+                "test_cases_json": json.dumps([[[1, 2, 3], 3], [[5, 2, 8], 8], [[-1, -5, -2], -1]]),
             }
         )
 
@@ -72,7 +79,7 @@ def create_code_dataset(num_samples: int = 40) -> Dataset:
                         "content": "Write a Python function `count_vowels(s)` that returns the number of vowels in a string.",
                     }
                 ],
-                "test_cases": [("hello", 2), ("aeiou", 5), ("xyz", 0)],
+                "test_cases_json": json.dumps([[["hello"], 2], [["aeiou"], 5], [["xyz"], 0]]),
             }
         )
 
@@ -87,15 +94,21 @@ class CodeReward:
     messages on self.last_feedback for SDPO's teacher prompts.
     """
 
+    __name__ = "code_reward"
+
     def __init__(self):
         self.last_feedback: list[str] = []
 
-    def __call__(self, prompts, completions, test_cases, **kwargs) -> list[float]:
+    def __call__(self, prompts, completions, test_cases_json, **kwargs) -> list[float]:
         scores = []
         self.last_feedback = []
 
-        for completion, tests in zip(completions, test_cases):
-            score, feedback = self._evaluate(completion, tests)
+        for completion, tests_json in zip(completions, test_cases_json):
+            # TRL passes completions as [{"role": "assistant", "content": "..."}]
+            # for conversational datasets. Extract the text.
+            text = completion[0]["content"] if isinstance(completion, list) else completion
+            tests = json.loads(tests_json) if isinstance(tests_json, str) else tests_json
+            score, feedback = self._evaluate(text, tests)
             scores.append(score)
             self.last_feedback.append(feedback)
 
@@ -123,13 +136,14 @@ class CodeReward:
             return 0.0, f"No function defined in: {code[:80]}"
 
         errors = []
-        for test_input, expected in test_cases:
+        for args, expected in test_cases:
             try:
-                result = func(*test_input) if isinstance(test_input, tuple) else func(test_input)
+                # args is always a list of positional arguments
+                result = func(*args) if isinstance(args, (tuple, list)) else func(args)
                 if result != expected:
-                    errors.append(f"input={test_input}: expected {expected}, got {result}")
+                    errors.append(f"input={args}: expected {expected}, got {result}")
             except Exception as e:
-                errors.append(f"input={test_input}: {type(e).__name__}: {e}")
+                errors.append(f"input={args}: {type(e).__name__}: {e}")
 
         if not errors:
             return 1.0, ""
@@ -141,7 +155,7 @@ def main():
     print("=== SDPO Training - Rich Feedback from Code Execution ===\n")
 
     model_name = "Qwen/Qwen2.5-0.5B-Instruct"
-    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
+    model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16, device_map="auto")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -151,7 +165,7 @@ def main():
 
     grpo_config = GRPOConfig(
         output_dir="./output/sdpo_rich_feedback",
-        num_generations=6,  # More completions = more chances for a successful peer demo
+        num_generations=4,  # More completions = more chances for a successful peer demo
         max_completion_length=256,
         temperature=0.8,
         num_train_epochs=1,

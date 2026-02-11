@@ -12,6 +12,7 @@ dependencies = [
     "transformers>=4.50.0",
     "trl>=0.17.0",
     "accelerate>=1.0.0",
+    "peft>=0.14.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "datasets>=4.3.0",
@@ -20,7 +21,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-lora = ["peft>=0.14.0"]
 unsloth = ["unsloth"]
 test = ["pytest", "pytest-cov"]
 dev = ["pytest", "pytest-cov", "ruff"]

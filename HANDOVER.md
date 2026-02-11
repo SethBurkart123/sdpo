@@ -30,18 +30,19 @@ We did deep-dive research into:
 
 ### Implementation (complete)
 
-All code uses **test-driven development**. **115 tests across 7 test files, all passing.**
+All code uses **test-driven development**. **137+ tests across 8 test files, all passing.**
 
 | Module | What It Does | Tests |
 |--------|-------------|-------|
-| `distillation.py` | Top-K KL divergence, tail bucket, JSD, IS clipping, loss aggregation | 27 |
-| `reprompting.py` | Teacher prompt construction, demo selection, thinking tag removal, SD mask | 19 |
-| `teacher.py` | EMA update formula, callback with TRL timing | 7 |
-| `config.py` | `SDPOConfig` dataclass with paper experiment defaults | 16 |
+| `distillation.py` | Top-K KL divergence, tail bucket, JSD, IS clipping, loss aggregation | 29 |
+| `reprompting.py` | Teacher prompt construction, demo selection, thinking tag removal, build_teacher_messages, SD mask | 24 |
+| `teacher.py` | EMA update, callback timing, lora_ema (init, collect pairs, adapter EMA, callback) | 24 |
+| `config.py` | `SDPOConfig` dataclass with paper defaults, apply_chat_template_kwargs, lora_ema validation | 20 |
 | `trainer.py` | `SDPOTrainer(GRPOTrainer)` — full integration layer | 10 |
 | `utils.py` | Unsloth import order detection | 0 (runtime utility) |
 | *reference match* | Verify outputs match verl reference code | 34 |
 | *unsloth integration* | End-to-end with Unsloth + 4-bit LoRA | 2 |
+| *example smoke tests* | GPU tests for all 4 example scripts | 4 |
 
 Run tests: `uv run pytest`
 
@@ -56,6 +57,12 @@ compared line-by-line against our implementation. 6 bugs were found and fixed:
 4. **Teacher tokenization** — now uses `apply_chat_template` with chat formatting
 5. **Self-distillation mask** — accounts for `feedback_only_without_solution` flag
 6. **EMA with quantized models** — skips non-floating-point params (Unsloth/4-bit)
+
+Three additional bugs were found and fixed in the Phase 1 audit (commit `1d101cc`):
+
+7. **Teacher prompts not preserving system messages** — fixed via `build_teacher_messages()` in `reprompting.py`
+8. **Missing `apply_chat_template_kwargs`** — added to `SDPOConfig`, forwarded to `apply_chat_template`
+9. **`teacher_per_token_logps` not computed** — fixed via `torch.gather` in `compute_loss`
 
 ---
 
@@ -112,7 +119,21 @@ SDPOTrainer`. Python's MRO resolves `super()` calls at call time, so if Unsloth
 patches `GRPOTrainer` methods before our subclass is imported, `super()` calls in
 `_generate_and_score_completions` will go to the patched (optimized) version.
 
-### 6. Config Defaults: Paper vs YAML
+### 6. LoRA EMA: Multi-Adapter Teacher
+
+For PEFT/LoRA models, `teacher_mode="lora_ema"` avoids deepcopying the entire model.
+Instead, it creates a second LoRA adapter ("sdpo_teacher") on the same base model.
+EMA updates only touch adapter weights (~8M params for a typical config). The base
+model weights are shared between student and teacher — never duplicated.
+
+This saves ~3-4 GB for 7B QLoRA models. The trainer handles everything automatically:
+`init_lora_ema_teacher()` is called in `__init__`, and `LoraEMATeacherCallback` fires
+after each training step. In `compute_loss`, the trainer switches to the teacher adapter
+via `model.set_adapter(LORA_EMA_TEACHER_ADAPTER)` for the teacher forward pass.
+
+Requires `peft>=0.14.0` (now a default dependency, not optional).
+
+### 7. Config Defaults: Paper vs YAML
 
 The verl `actor.yaml` has different defaults than what the paper's experiments use.
 The experiment scripts override via command-line args. Our `SDPOConfig` defaults
@@ -208,13 +229,19 @@ EMA teacher management. Contains:
 
 - `ema_update(teacher, student, rate)` — `θ_t = (1-α)θ_t + αθ_s`
 - `EMATeacherCallback(teacher_model, student_model, update_rate, num_iterations)` — timing
+- `LORA_EMA_TEACHER_ADAPTER` — constant `"sdpo_teacher"`
+- `init_lora_ema_teacher(model)` — creates teacher adapter, copies weights, freezes
+- `collect_lora_adapter_pairs(model, student, teacher)` — finds matching param pairs across two LoRA adapters
+- `ema_update_lora_adapters(model, rate)` — in-place EMA on adapter params only
+- `LoraEMATeacherCallback` — step-gated callback wrapping adapter EMA
 
-Matches `verl/workers/actor/dp_actor.py::DataParallelPPOActor._update_teacher`.
+Standard EMA matches `verl/workers/actor/dp_actor.py::DataParallelPPOActor._update_teacher`. LoRA EMA is a novel extension.
 
 ### `src/sdpo_rl/config.py`
 
 `SDPOConfig` dataclass. Defaults match paper experiment scripts. Validates alpha range,
-teacher mode, truncation side, topk.
+teacher mode (ema, frozen, lora_ema), truncation side, topk. Includes `apply_chat_template_kwargs`
+for custom chat template arguments.
 
 ### `src/sdpo_rl/utils.py`
 
